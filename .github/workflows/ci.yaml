@@ -17,6 +17,8 @@ jobs:
     uses: charmed-kubernetes/workflows/.github/workflows/lint-unit.yaml@main
     needs: 
       - call-inclusive-naming-check
+    with:
+      python: "['3.9', '3.10', '3.11']"
 
   charmcraft-build:
     name: Build Charm
