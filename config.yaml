@@ -1,0 +1,54 @@
+# This file defines charm config options, and populates the Configure tab on Charmhub.
+# If your charm does not require configuration options, delete this file entirely.
+#
+# See https://juju.is/docs/config for guidance.
+
+options:
+  image-registry:
+    type: string
+    default: quay.io
+    description: |
+      Source registry of metrics server images.
+
+      By setting to a value, each image listed in the releases manifest
+      has its image-registry replaced.
+
+      If unset, the manifests will use the image registry from the kube-control relation
+
+      example)
+        juju config kube-virt image-registry='quay.io'
+
+        juju config kube-virt --reset image-registry
+
+  software-emulation:
+    type: bool
+    description: |
+      Whether to allow software-emulation of VMs
+      true: allows such behavior
+      false: disallows such behavior
+      unset: automatically determined by the group of units
+
+      example)
+        juju config kube-virt software-emulation=true
+
+        juju config kube-virt software-emulation=false
+
+        juju config kube-virt --reset software-emulation
+
+  operator-release:
+    type: string
+    description: |
+      Specify the version of kubevirt as defined by the release
+      tags of https://github.com/kubevirt/kubevirt/releases/tags
+
+      example)
+        juju config kube-virt operator-release='v0.58.0'
+      
+      A list of supported versions is available through the action:
+        juju run-action kube-virt/leader list-releases --wait
+      
+      To reset by to the latest supported by the charm use:
+        juju config kube-virt --reset operator-release
+      
+      The current release deployed is available by viewing
+        juju status kube-virt 

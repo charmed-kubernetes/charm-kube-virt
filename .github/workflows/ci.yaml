@@ -1,0 +1,55 @@
+name: Tests
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  call-inclusive-naming-check:
+    name: Inclusive Naming
+    uses: canonical-web-and-design/Inclusive-naming/.github/workflows/woke.yaml@main
+    with:
+      fail-on-error: "true"
+
+  lint-unit:
+    name: Lint Unit
+    uses: charmed-kubernetes/workflows/.github/workflows/lint-unit.yaml@main
+    needs: 
+      - call-inclusive-naming-check
+
+  charmcraft-build:
+    name: Build Charm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+      - name: Install and prepare LXD snap environment
+        run: |
+          sudo apt-get remove -qy lxd lxd-client | true
+          sudo snap list lxd | true
+          sudo snap install lxd --channel=latest/stable
+          sudo snap refresh lxd --channel=latest/stable
+          sudo lxd waitready
+          sudo lxd init --auto
+          sudo chmod a+wr /var/snap/lxd/common/lxd/unix.socket
+          sudo lxc network set lxdbr0 ipv6.address none
+          sudo usermod -a -G lxd $USER
+          sg lxd -c 'lxc version'
+      - name: Install Charmcraft
+        run: |
+          sudo snap install charmcraft --classic --channel=latest/stable
+      - name: Build Charm
+        run: |
+          sg lxd -c 'charmcraft pack -v'
+      - name: Upload charm artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubevirt.charm
+          path: ./kubevirt*.charm
+      - name: Upload debug artifacts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: charmcraft-logs
+          path: /home/runner/snap/charmcraft/common/cache/charmcraft/log/charmcraft-*.log

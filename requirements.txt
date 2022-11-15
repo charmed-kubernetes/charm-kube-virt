@@ -1,0 +1,4 @@
+ops >= 1.5.0
+lightkube>=0.10.1,<1.0.0
+git+https://github.com/canonical/ops-lib-manifest.git@602eb96dcfa54269505923b28d861771879c703d
+git+https://github.com/charmed-kubernetes/interface-kube-control.git@676ab9c8c5ba92d0add72ba1d8b132de053ee15e#subdirectory=ops

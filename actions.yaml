@@ -1,0 +1,47 @@
+list-versions:
+  description: List Operator Versions supported by this charm
+list-resources:
+  description: List Operator Resources in configured version
+  params:
+    manifest:
+      type: string
+      default: ""
+      description: |
+        Filter list based on "kubevirt-cr" or "kubevirt-operator" manifests.
+    resources:
+      type: string
+      default: ""
+      description: |
+        Space separated list of kubernetes resource types to filter list result
+scrub-resources:
+  description: |
+    Remove kubernetes resources created by this charm which should no
+    longer be in the cluster.
+  params:
+    manifest:
+      type: string
+      default: ""
+      description: |
+        Filter list based on "kubevirt-cr" or "kubevirt-operator" manifests.
+    resources:
+      type: string
+      default: ""
+      description: |
+        Space separated list of kubernetes resource types to filter scrubbing   
+sync-resources:
+  description: |
+    Add kubernetes resources which should be created by this charm which aren't
+    present within the cluster.
+  params:
+    manifest:
+      type: string
+      default: ""
+      description: |
+        Filter list based on "kubevirt-cr" or "kubevirt-operator" manifests.
+    resources:
+      type: string
+      default: ""
+      description: |
+        Space separated list of kubernetes resource types
+        to use a filter during the sync. This helps limit
+        which missing resources are applied.
