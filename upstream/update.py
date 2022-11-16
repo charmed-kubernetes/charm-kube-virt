@@ -34,21 +34,15 @@ SOURCES = dict(
         repo="kubevirt/kubevirt",
         release_tags=True,
         manifests=[
-            "kubevirt-operator.yaml",
+            "kubevirt-operator.yaml", "kubevirt-cr.yaml"
         ],
         path="releases/download",
         version_parser=VersionInfo.parse,
         minimum="v0.48.1",
         maximum="v999.0.0",
-    ),
-    custom_resource=dict(
-        repo="kubevirt/kubevirt",
-        release_tags=True,
-        manifests=["kubevirt-cr.yaml"],
-        path="releases/download",
-        version_parser=VersionInfo.parse,
-        minimum="v0.58.0",
-        maximum="v999.0.0",
+        # alphanumerically order manifests by the original list order
+        # because the operator.yaml must be read and deployed before the cr.yaml
+        enumerate_manifest=True,
     ),
 )
 FILEDIR = Path(__file__).parent
@@ -191,8 +185,9 @@ def download(source: str, release: Release) -> Release:
     """Download the manifest files for a specific release."""
     log.info(f"Getting Release {source}: {release.name}")
     paths = []
-    for manifest in release.paths:
-        dest = FILEDIR / source / "manifests" / release.name / Path(manifest).name
+    for idx, manifest in enumerate(release.paths):
+        prefix = f"{idx:03}-" if SOURCES[source]["enumerate_manifest"] else ""
+        dest = FILEDIR / source / "manifests" / release.name / (prefix + Path(manifest).name)
         dest.parent.mkdir(exist_ok=True)
         urllib.request.urlretrieve(manifest, dest)
         paths.append(dest)

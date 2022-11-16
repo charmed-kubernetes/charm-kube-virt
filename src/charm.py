@@ -13,12 +13,11 @@ from ops.manifests import Collector
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 
 from config import CharmConfig
-from kubevirt_manifests import KubeVirtCustomResources, KubeVirtOperator
+from kubevirt_manifests import KubeVirtOperator
+from kubevirt_peer import KubeVirtPeer
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
-
-VALID_LOG_LEVELS = ["info", "debug", "warning", "error", "critical"]
 
 
 class CharmKubeVirtCharm(CharmBase):
@@ -31,6 +30,8 @@ class CharmKubeVirtCharm(CharmBase):
 
         # Relation Validator and datastore
         self.kube_control = KubeControlRequirer(self)
+        self.kube_virt = KubeVirtPeer(self)
+
         # Config Validator and datastore
         self.charm_config = CharmConfig(self)
 
@@ -44,17 +45,17 @@ class CharmKubeVirtCharm(CharmBase):
                 self,
                 self.charm_config,
                 self.kube_control,
-            ),
-            KubeVirtCustomResources(
-                self,
-                self.charm_config,
-                self.kube_control,
-            ),
+            )
         )
         self.framework.observe(self.on.kube_control_relation_created, self._kube_control)
         self.framework.observe(self.on.kube_control_relation_joined, self._kube_control)
         self.framework.observe(self.on.kube_control_relation_changed, self._kube_control)
         self.framework.observe(self.on.kube_control_relation_broken, self._merge_config)
+
+        self.framework.observe(self.on.kubevirts_relation_created, self._kube_virt)
+        self.framework.observe(self.on.kubevirts_relation_joined, self._kube_virt)
+        self.framework.observe(self.on.kubevirts_relation_changed, self._kube_virt)
+        self.framework.observe(self.on.kubevirts_relation_broken, self._kube_virt)
 
         self.framework.observe(self.on.list_versions_action, self._list_versions)
         self.framework.observe(self.on.list_resources_action, self._list_resources)
@@ -92,14 +93,31 @@ class CharmKubeVirtCharm(CharmBase):
         unready = self.collector.unready
         if unready:
             self.unit.status = WaitingStatus(", ".join(unready))
-        else:
-            self.unit.status = ActiveStatus("Ready")
+            return
+
+        self.unit.status = ActiveStatus("Ready")
+        if self.unit.is_leader():
             self.unit.set_workload_version(self.collector.short_version)
             self.app.status = ActiveStatus(self.collector.long_version)
 
     def _kube_control(self, event=None):
         self.kube_control.set_auth_request(self.unit.name)
         return self._merge_config(event)
+
+    def _kube_virt(self, event=None):
+        self.kube_virt.discover()
+        return self._merge_config(event)
+
+    def _check_kube_virts(self, event):
+        self.unit.status = MaintenanceStatus("Evaluating Peers.")
+        evaluation = self.kube_virt.evaluate_relation(event)
+        if evaluation:
+            if "Waiting" in evaluation:
+                self.unit.status = WaitingStatus(evaluation)
+            else:
+                self.unit.status = BlockedStatus(evaluation)
+            return False
+        return True
 
     def _check_kube_control(self, event):
         self.unit.status = MaintenanceStatus("Evaluating kubernetes authentication.")
@@ -113,7 +131,6 @@ class CharmKubeVirtCharm(CharmBase):
         if not self.kube_control.get_auth_credentials(self.unit.name):
             self.unit.status = WaitingStatus("Waiting for kube-control: unit credentials")
             return
-        map(lambda _: _.ensure_kube_config, self.collector.manifests)
         return True
 
     def _check_config(self):
@@ -126,6 +143,9 @@ class CharmKubeVirtCharm(CharmBase):
 
     def _merge_config(self, event=None):
         if not self._check_kube_control(event):
+            return
+
+        if not self._check_kube_virts(event):
             return
 
         if not self._check_config():
@@ -148,12 +168,15 @@ class CharmKubeVirtCharm(CharmBase):
         self._install_or_upgrade()
 
     def _install_or_upgrade(self, _event=None):
+        self._kube_virt(_event)
+
         if not self.stored.config_hash:
             return
-        self.unit.status = MaintenanceStatus("Deploying KubeVirt Operator")
-        self.unit.set_workload_version("")
-        for controller in self.collector.manifests.values():
-            controller.apply_manifests()
+        if self.unit.is_leader():
+            self.unit.status = MaintenanceStatus("Deploying KubeVirt Operator")
+            self.unit.set_workload_version("")
+            for controller in self.collector.manifests.values():
+                controller.apply_manifests()
         self.stored.deployed = True
 
     def _cleanup(self, _event):

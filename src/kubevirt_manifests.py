@@ -3,13 +3,9 @@
 """Implementation of KubeVirt specific details of the kubernetes manifests."""
 import logging
 import pickle
-import tempfile
-from functools import cached_property
 from hashlib import md5
-from pathlib import Path
 from typing import Dict, Optional
 
-from lightkube import Client, KubeConfig
 from ops.manifests import ConfigRegistry, ManifestLabel, Manifests, Patch
 
 log = logging.getLogger(__file__)
@@ -36,48 +32,23 @@ class UpdateKubeVirt(Patch):
 class KubeVirtBase(Manifests):
     """Base class for KubeVirt Manifests."""
 
-    CA_CERT_PATH = Path("/root/cdk/ca.crt")
-    KUBECONFIG_PATH = Path("/root/cdk/kubeconfig")
-
-    @cached_property
-    def kubeconfig(self) -> KubeConfig:
-        """Provide kubeconfig found on machine or from kube-control relation."""
-        if self.KUBECONFIG_PATH.exists():
-            return KubeConfig.from_file(self.KUBECONFIG_PATH)
-
-        self.CA_CERT_PATH.parent.mkdir(exist_ok=True)
-        with tempfile.NamedTemporaryFile() as fp:
-            kubeconfig_file = fp.name
-            self.kube_control.create_kubeconfig(
-                ca=self.CA_CERT_PATH,
-                kubeconfig=kubeconfig_file,
-                user=self.unit.name,
-                k8s_user=self.unit.name,
-            )
-            return KubeConfig.from_file(kubeconfig_file)
-
-    @cached_property
-    def client(self) -> Client:
-        """Lazy evaluation of the lightkube client."""
-        return Client(config=self.kubeconfig, field_manager=f"{self.model.app.name}-{self.name}")
-
     def hash(self) -> int:
         """Calculate a hash of the current configuration."""
         return int(md5(pickle.dumps(self.config)).hexdigest(), 16)
 
 
-class KubeVirtCustomResources(Manifests):
+class KubeVirtCustomResources(KubeVirtBase):
     """Deployment Specific details for the kubevirt-cr."""
 
-    def __init__(self, charm, charm_config, kube_control):
+    def __init__(self, charm, charm_config, kube_virts):
         manipulations = [
             ManifestLabel(self),
             UpdateKubeVirt(self),
         ]
-        super().__init__("kubevirt-cr", charm.model, "upstream/custom_resource", manipulations)
+        super().__init__("kubevirt-custom-resource", charm.model, "upstream/custom_resource", manipulations)
         self.unit = charm.unit
         self.charm_config = charm_config
-        self.kube_control = kube_control
+        self.kube_virts = kube_virts
 
     def evaluate(self) -> Optional[str]:
         """Determine if manifest_config can be applied to manifests."""
@@ -91,10 +62,20 @@ class KubeVirtCustomResources(Manifests):
     @property
     def config(self) -> Dict:
         """Returns current config available from charm config and joined relations."""
-        return dict(**self.charm_config.available_data)
+        config = {}
+        if self.kube_virts.is_ready:
+            config["software-emulation"] = not self.kube_virts.supports_kvm
+
+        config.update(**self.charm_config.available_data)
+
+        for key, value in dict(**config).items():
+            if value == "" or value is None:
+                del config[key]
+
+        return config
 
 
-class KubeVirtOperator(Manifests):
+class KubeVirtOperator(KubeVirtBase):
     """Deployment Specific details for the kubevirt-operator."""
 
     def __init__(self, charm, charm_config, kube_control):
@@ -102,7 +83,7 @@ class KubeVirtOperator(Manifests):
             ManifestLabel(self),
             ConfigRegistry(self),
         ]
-        super().__init__("kubevirt-operator", charm.model, "upstream/operator", manipulations)
+        super().__init__("kubevirt", charm.model, "upstream/operator", manipulations)
         self.unit = charm.unit
         self.charm_config = charm_config
         self.kube_control = kube_control
@@ -123,3 +104,7 @@ class KubeVirtOperator(Manifests):
         config["release"] = config.pop("operator-release", None)
 
         return config
+
+    def evaluate(self) -> Optional[str]:
+        """These manifests are always ready to be updated."""
+        return None

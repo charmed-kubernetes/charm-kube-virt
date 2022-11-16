@@ -7,7 +7,7 @@ list-resources:
       type: string
       default: ""
       description: |
-        Filter list based on "kubevirt-cr" or "kubevirt-operator" manifests.
+        Filter list based on "kubevirt" or "kubevirt-custom-resource" manifests.
     resources:
       type: string
       default: ""
@@ -22,7 +22,7 @@ scrub-resources:
       type: string
       default: ""
       description: |
-        Filter list based on "kubevirt-cr" or "kubevirt-operator" manifests.
+        Filter list based on "kubevirt" or "kubevirt-custom-resource" manifests.
     resources:
       type: string
       default: ""
@@ -37,7 +37,7 @@ sync-resources:
       type: string
       default: ""
       description: |
-        Filter list based on "kubevirt-cr" or "kubevirt-operator" manifests.
+        Filter list based on "kubevirt" or "kubevirt-custom-resource" manifests.
     resources:
       type: string
       default: ""

@@ -21,7 +21,7 @@ options:
         juju config kube-virt --reset image-registry
 
   software-emulation:
-    type: bool
+    type: boolean
     description: |
       Whether to allow software-emulation of VMs
       true: allows such behavior
