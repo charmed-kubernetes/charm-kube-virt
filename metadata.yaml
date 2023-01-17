@@ -12,7 +12,6 @@ subordinate: true
 tags:
   - kubernetes
   - kubevirt
-  - gcp
 peers:
   kubevirts:
     interface: kubevirts
@@ -20,7 +19,6 @@ requires:
   juju-info:
     interface: juju-info
     scope: container
-    limit: 1
   kube-control:
     interface: kube-control
     limit: 1

@@ -29,64 +29,24 @@ class UpdateKubeVirt(Patch):
         obj.spec.configuration.developerConfiguration.useEmulation = software_emulation
 
 
-class KubeVirtBase(Manifests):
-    """Base class for KubeVirt Manifests."""
-
-    def hash(self) -> int:
-        """Calculate a hash of the current configuration."""
-        return int(md5(pickle.dumps(self.config)).hexdigest(), 16)
-
-
-class KubeVirtCustomResources(KubeVirtBase):
-    """Deployment Specific details for the kubevirt-cr."""
-
-    def __init__(self, charm, charm_config, kube_virts):
-        manipulations = [
-            ManifestLabel(self),
-            UpdateKubeVirt(self),
-        ]
-        super().__init__("kubevirt-custom-resource", charm.model, "upstream/custom_resource", manipulations)
-        self.unit = charm.unit
-        self.charm_config = charm_config
-        self.kube_virts = kube_virts
-
-    def evaluate(self) -> Optional[str]:
-        """Determine if manifest_config can be applied to manifests."""
-        props = UpdateKubeVirt.REQUIRED
-        for prop in props:
-            value = self.config.get(prop)
-            if not value:
-                return f"KubeVirt manifests waiting for definition of {prop}"
-        return None
-
-    @property
-    def config(self) -> Dict:
-        """Returns current config available from charm config and joined relations."""
-        config = {}
-        if self.kube_virts.is_ready:
-            config["software-emulation"] = not self.kube_virts.supports_kvm
-
-        config.update(**self.charm_config.available_data)
-
-        for key, value in dict(**config).items():
-            if value == "" or value is None:
-                del config[key]
-
-        return config
-
-
-class KubeVirtOperator(KubeVirtBase):
+class KubeVirtOperator(Manifests):
     """Deployment Specific details for the kubevirt-operator."""
 
-    def __init__(self, charm, charm_config, kube_control):
+    def __init__(self, charm, charm_config, kube_control, kube_virts):
         manipulations = [
             ManifestLabel(self),
             ConfigRegistry(self),
+            UpdateKubeVirt(self),
         ]
         super().__init__("kubevirt", charm.model, "upstream/operator", manipulations)
         self.unit = charm.unit
         self.charm_config = charm_config
         self.kube_control = kube_control
+        self.kube_virts = kube_virts
+
+    def hash(self) -> int:
+        """Calculate a hash of the current configuration."""
+        return int(md5(pickle.dumps(self.config)).hexdigest(), 16)
 
     @property
     def config(self) -> Dict:
@@ -94,6 +54,9 @@ class KubeVirtOperator(KubeVirtBase):
         config = {}
         if self.kube_control.is_ready:
             config["image-registry"] = self.kube_control.get_registry_location()
+
+        if self.kube_virts.is_ready:
+            config["software-emulation"] = not self.kube_virts.supports_kvm
 
         config.update(**self.charm_config.available_data)
 
@@ -106,5 +69,10 @@ class KubeVirtOperator(KubeVirtBase):
         return config
 
     def evaluate(self) -> Optional[str]:
-        """These manifests are always ready to be updated."""
+        """Determine if manifest_config can be applied to manifests."""
+        props = UpdateKubeVirt.REQUIRED
+        for prop in props:
+            value = self.config.get(prop)
+            if not value:
+                return f"KubeVirt manifests waiting for definition of {prop}"
         return None

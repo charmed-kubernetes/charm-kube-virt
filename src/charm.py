@@ -9,7 +9,7 @@ from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.interface_kube_control import KubeControlRequirer
 from ops.main import main
-from ops.manifests import Collector
+from ops.manifests import Collector, ManifestClientError
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 
 from config import CharmConfig
@@ -45,6 +45,7 @@ class CharmKubeVirtCharm(CharmBase):
                 self,
                 self.charm_config,
                 self.kube_control,
+                self.kube_virt,
             )
         )
         self.framework.observe(self.on.kube_control_relation_created, self._kube_control)
@@ -100,11 +101,11 @@ class CharmKubeVirtCharm(CharmBase):
             self.unit.set_workload_version(self.collector.short_version)
             self.app.status = ActiveStatus(self.collector.long_version)
 
-    def _kube_control(self, event=None):
+    def _kube_control(self, event):
         self.kube_control.set_auth_request(self.unit.name)
         return self._merge_config(event)
 
-    def _kube_virt(self, event=None):
+    def _kube_virt(self, event):
         self.kube_virt.discover()
         return self._merge_config(event)
 
@@ -141,7 +142,7 @@ class CharmKubeVirtCharm(CharmBase):
             return False
         return True
 
-    def _merge_config(self, event=None):
+    def _merge_config(self, event):
         if not self._check_kube_control(event):
             return
 
@@ -165,10 +166,10 @@ class CharmKubeVirtCharm(CharmBase):
 
         self.stored.config_hash = new_hash
         self.stored.deployed = False
-        self._install_or_upgrade()
+        self._install_or_upgrade(event)
 
-    def _install_or_upgrade(self, _event=None):
-        self._kube_virt(_event)
+    def _install_or_upgrade(self, event):
+        self._kube_virt(event)
 
         if not self.stored.config_hash:
             return
@@ -176,14 +177,28 @@ class CharmKubeVirtCharm(CharmBase):
             self.unit.status = MaintenanceStatus("Deploying KubeVirt Operator")
             self.unit.set_workload_version("")
             for controller in self.collector.manifests.values():
-                controller.apply_manifests()
+                try:
+                    controller.apply_manifests()
+                except ManifestClientError:
+                    self.unit.status = WaitingStatus("Waiting for kube-apiserver")
+                    event.defer()
+                    return
         self.stored.deployed = True
 
-    def _cleanup(self, _event):
-        if self.stored.config_hash:
+    def _cleanup(self, event):
+        if not self.stored.config_hash:
+            return
+
+        if self.unit.is_leader():
             self.unit.status = MaintenanceStatus("Cleaning up KubeVirt Operator")
             for controller in self.collector.manifests.values():
-                controller.delete_manifests(ignore_unauthorized=True)
+                try:
+                    controller.delete_manifests(ignore_unauthorized=True)
+                except ManifestClientError:
+                    self.unit.status = WaitingStatus("Waiting for kube-apiserver")
+                    event.defer()
+                    return
+
         self.unit.status = MaintenanceStatus("Shutting down")
 
 

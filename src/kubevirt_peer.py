@@ -31,8 +31,9 @@ class KubeVirtPeer(Object):
 
     @cached_property
     def _data(self) -> List[Data]:
-        if self.relation and self.relation.units:
-            return [Data(**self.relation.data[u]) for u in self.relation.units]
+        units = self.relation.units | {self.model.unit}
+        if self.relation:
+            return [Data(**self.relation.data[u]) for u in units]
         return []
 
     def evaluate_relation(self, event) -> Optional[str]:
@@ -61,9 +62,9 @@ class KubeVirtPeer(Object):
 
     def discover(self) -> None:
         if self.relation:
-            self.relation.data[self.model.unit].update({
-                "supports-kvm": "true" if Path("/dev/kvm").exists() else "false"
-            })
+            self.relation.data[self.model.unit].update(
+                {"supports-kvm": "true" if Path("/dev/kvm").exists() else "false"}
+            )
 
     @property
     def supports_kvm(self) -> bool:

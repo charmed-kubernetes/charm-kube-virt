@@ -21,7 +21,7 @@ from typing import Generator, List, Optional, Set, Tuple, TypedDict
 import yaml
 from semver import VersionInfo
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("updating kubevirt")
 logging.basicConfig(level=logging.INFO)
 GH_REPO = "https://api.github.com/repos/{repo}"
 GH_TAGS = "https://api.github.com/repos/{repo}/tags"
@@ -33,9 +33,7 @@ SOURCES = dict(
     operator=dict(
         repo="kubevirt/kubevirt",
         release_tags=True,
-        manifests=[
-            "kubevirt-operator.yaml", "kubevirt-cr.yaml"
-        ],
+        manifests=["kubevirt-operator.yaml", "kubevirt-cr.yaml"],
         path="releases/download",
         version_parser=VersionInfo.parse,
         minimum="v0.48.1",
