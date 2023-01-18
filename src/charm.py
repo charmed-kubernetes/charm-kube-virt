@@ -5,6 +5,8 @@
 
 import logging
 
+import charms.operator_libs_linux.v0.apt as apt
+from charms.operator_libs_linux.v0.apt import PackageError, PackageNotFoundError
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.interface_kube_control import KubeControlRequirer
@@ -162,14 +164,27 @@ class CharmKubeVirtCharm(CharmBase):
             new_hash += controller.hash()
 
         if new_hash == self.stored.config_hash:
+            self._update_status(event)
             return
 
         self.stored.config_hash = new_hash
         self.stored.deployed = False
         self._install_or_upgrade(event)
 
+    def _upgrade_qemu(self, event):
+        self.unit.status = MaintenanceStatus("Installing Qemu")
+        try:
+            # Run `apt-get update` and add qemu
+            logger.info("Installing apt packages")
+            apt.add_package("qemu", update_cache=True)
+        except PackageNotFoundError:
+            logger.error("a specified package not found in package cache or on system")
+        except PackageError as e:
+            logger.error("could not install package. Reason: %s", e.message)
+
     def _install_or_upgrade(self, event):
         self._kube_virt(event)
+        self._upgrade_qemu(event)
 
         if not self.stored.config_hash:
             return

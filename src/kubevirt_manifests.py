@@ -15,7 +15,7 @@ class UpdateKubeVirt(Patch):
     """Update the CRD KubeVirt as a patch."""
 
     NAME = "kubevirt"
-    REQUIRED = {"software-emulation"}
+    REQUIRED = {"software-emulation", "pvc-tolerate-less-space-up-to-percent"}
 
     def __call__(self, obj):
         """Update the kubevirt object."""
@@ -26,8 +26,15 @@ class UpdateKubeVirt(Patch):
             log.error(
                 f"kubevirt software-emulation was an unexpected type: {type(software_emulation)}"
             )
-        log.info(("Enabling" if software_emulation else "Disabling") + " kubevirt software-emulation")
-        obj.spec["configuration"]["developerConfiguration"]["useEmulation"] = software_emulation
+        dev_config = obj.spec["configuration"]["developerConfiguration"]
+        log.info(
+            ("Enabling" if software_emulation else "Disabling") + " kubevirt software-emulation"
+        )
+        dev_config["useEmulation"] = software_emulation
+
+        pvc_toleration = self.manifests.config.get("pvc-tolerate-less-space-up-to-percent")
+        log.info(f"kubevirt pvcTolerateLessSpaceUpToPercent={pvc_toleration}%")
+        dev_config["pvcTolerateLessSpaceUpToPercent"] = pvc_toleration
 
 
 class KubeVirtOperator(Manifests):
@@ -76,4 +83,9 @@ class KubeVirtOperator(Manifests):
             value = self.config.get(prop)
             if value is None:
                 return f"KubeVirt manifests waiting for definition of {prop}"
+
+        percent = self.config.get("pvc-tolerate-less-space-up-to-percent")
+        if not (0 < percent < 100):
+            return f"pvc-tolerate-less-space-up-to-percent is not in range: 0 < {percent} < 100"
+
         return None
