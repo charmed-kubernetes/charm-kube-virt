@@ -19,14 +19,15 @@ class UpdateKubeVirt(Patch):
 
     def __call__(self, obj):
         """Update the kubevirt object."""
-        if not (obj.kind == "kubevirt" and obj.metadata.name == self.NAME):
+        if not (obj.kind == "KubeVirt" and obj.metadata.name == self.NAME):
             return
         software_emulation = self.manifests.config.get("software-emulation")
         if not isinstance(software_emulation, bool):
             log.error(
                 f"kubevirt software-emulation was an unexpected type: {type(software_emulation)}"
             )
-        obj.spec.configuration.developerConfiguration.useEmulation = software_emulation
+        log.info(("Enabling" if software_emulation else "Disabling") + " kubevirt software-emulation")
+        obj.spec["configuration"]["developerConfiguration"]["useEmulation"] = software_emulation
 
 
 class KubeVirtOperator(Manifests):
@@ -73,6 +74,6 @@ class KubeVirtOperator(Manifests):
         props = UpdateKubeVirt.REQUIRED
         for prop in props:
             value = self.config.get(prop)
-            if not value:
+            if value is None:
                 return f"KubeVirt manifests waiting for definition of {prop}"
         return None
