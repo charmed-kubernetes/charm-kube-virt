@@ -1,0 +1,37 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstance
+metadata:
+  name: vmi-ubuntu
+spec:
+  terminationGracePeriodSeconds: 30
+  domain:
+    resources:
+      requests:
+        memory: 1024M
+    devices:
+      disks:
+      - name: containerdisk
+        disk:
+          bus: virtio
+      - name: test-pv-disk
+        disk:
+          bus: virtio
+      - name: cloudinitdisk
+        disk:
+          bus: virtio
+  volumes:
+  - name: containerdisk
+    containerDisk:
+      image: tedezed/ubuntu-container-disk:22.0
+  - name: test-pv-disk
+    persistentVolumeClaim:
+      claimName: test-pvc
+  - name: cloudinitdisk
+    cloudInitNoCloud:
+      userData: |-
+        #cloud-config
+        chpasswd:
+          list: |
+            ubuntu:ubuntu
+            root:toor
+          expire: False
