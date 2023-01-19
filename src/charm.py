@@ -143,9 +143,10 @@ class CharmKubeVirtCharm(CharmBase):
         if not self.kube_control.get_auth_credentials(self.unit.name):
             self.unit.status = WaitingStatus("Waiting for kube-control: unit credentials")
             return False
-        if not Path("~/.kube/config").exists():
+        if not Path("/root/.kube/config").exists():
             logger.info("Expected kubeconfig not found on filesystem")
             self.unit.status = WaitingStatus("Waiting for kubeconfig")
+            event.defer()
             return False
         return True
 
