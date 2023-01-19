@@ -22,13 +22,14 @@ APP_NAME = METADATA["name"]
 
 @pytest.fixture()
 async def vsphere_overlay(ops_test: OpsTest) -> Path:
-    bundles_dst_dir = self.tmp_path / "bundles"
+    bundles_dst_dir = ops_test.tmp_path / "bundles"
     bundles_dst_dir.mkdir(exist_ok=True)
     overlay = bundles_dst_dir / "vsphere-overlay.yaml"
     URL = "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/overlays/vsphere-overlay.yaml"
     with overlay.open("wb") as fp:
         with urllib.request.urlopen(URL) as f:
             fp.write(f.read())
+    yield overlay
 
 
 @pytest.mark.abort_on_fail
@@ -44,7 +45,7 @@ async def test_build_and_deploy(ops_test: OpsTest, vsphere_overlay: Path):
         charm = await ops_test.build_charm(".")
 
     overlays = [
-        Bundle("kubernetes-core", channel="edge"),
+        OpsTest.Bundle("kubernetes-core", channel="edge"),
         vsphere_overlay,
         Path("tests/data/charm.yaml"),
     ]

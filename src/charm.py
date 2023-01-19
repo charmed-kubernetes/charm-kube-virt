@@ -100,7 +100,7 @@ class CharmKubeVirtCharm(CharmBase):
 
         phases = ", ".join(
             f"{name}: {phase}"
-            for manifest in self.collector.manifests.items()
+            for name, manifest in self.collector.manifests.items()
             for phase in manifest.phases()
         )
 
