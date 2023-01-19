@@ -64,11 +64,16 @@ class KubeVirtPeer(Object):
             return False
         return True
 
+    @property
+    def dev_kvm_exists(self) -> bool:
+        """Returns true if /dev/kvm exists."""
+        return Path("/dev/kvm").exists()
+
     def discover(self) -> None:
         """Determine if this host supports kvm, and informs peers."""
         if self.relation:
             self.relation.data[self.model.unit].update(
-                {"supports-kvm": "true" if Path("/dev/kvm").exists() else "false"}
+                {"supports-kvm": "true" if self.dev_kvm_exists else "false"}
             )
 
     @property

@@ -4,6 +4,7 @@
 """Dispatch logic for the kube-virt operator charm."""
 
 import logging
+from pathlib import Path
 
 import charms.operator_libs_linux.v0.apt as apt
 from charms.operator_libs_linux.v0.apt import PackageError, PackageNotFoundError
@@ -41,6 +42,7 @@ class CharmKubeVirtCharm(CharmBase):
             cluster_tag=None,  # passing along to the integrator from the kube-control relation
             config_hash=None,  # hashed value of the charm config once valid
             deployed=False,  # True if the config has been applied after new hash
+            has_kvm=False,  # True if this unit has /dev/kvm
         )
         self.collector = Collector(
             KubeVirtOperator(
@@ -140,7 +142,11 @@ class CharmKubeVirtCharm(CharmBase):
             return False
         if not self.kube_control.get_auth_credentials(self.unit.name):
             self.unit.status = WaitingStatus("Waiting for kube-control: unit credentials")
-            return
+            return False
+        if not Path("~/.kube/config").exists():
+            logger.info("Expected kubeconfig not found on filesystem")
+            self.unit.status = WaitingStatus("Waiting for kubeconfig")
+            return False
         return True
 
     def _check_config(self):
@@ -180,10 +186,27 @@ class CharmKubeVirtCharm(CharmBase):
 
     def _upgrade_qemu(self, event):
         self.unit.status = MaintenanceStatus("Installing Qemu")
+        self.stored.has_kvm = self.kube_virt.dev_kvm_exists
         try:
             # Run `apt-get update` and add qemu
             logger.info("Installing apt packages")
-            apt.add_package("qemu", update_cache=True)
+            packages = ["qemu"]
+
+            if self.stored.has_kvm:
+                packages += [
+                    "qemu-kvm",
+                    "libvirt-daemon-system",
+                    "libvirt-clients",
+                    "bridge-utils",
+                ]
+
+            apt.add_package(packages, update_cache=True)
+
+            if self.stored.has_kvm:
+                # TODO: Need to update apparmor settings
+                # "/usr/libexec/qemu-kvm PUx,"
+                pass
+
         except PackageNotFoundError:
             logger.error("a specified package not found in package cache or on system")
         except PackageError as e:
