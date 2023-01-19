@@ -85,7 +85,7 @@ class KubeVirtOperator(Manifests):
                 return f"KubeVirt manifests waiting for definition of {prop}"
 
         percent = self.config.get("pvc-tolerate-less-space-up-to-percent")
-        if not (0 < percent < 100):
+        if percent is not None and not (0 < percent < 100):
             return f"pvc-tolerate-less-space-up-to-percent is not in range: 0 < {percent} < 100"
 
         return None

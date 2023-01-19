@@ -1,6 +1,6 @@
 # Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
-"""Implementation of kubevirts relation (peers)"""
+"""Implementation of kubevirts relation (peers)."""
 
 import logging
 from functools import cached_property
@@ -16,10 +16,14 @@ log = logging.getLogger("KubeControlRequirer")
 
 
 class Data(BaseModel):
+    """Data aquired from the kubevirts peer relation."""
+
     supports_kvm: Json[bool] = Field(alias="supports-kvm")
 
 
 class KubeVirtPeer(Object):
+    """Manages data exchange across the kubevirts relation."""
+
     def __init__(self, charm: CharmBase, endpoint: str = "kubevirts"):
         super().__init__(charm, f"relation-{endpoint}")
         self.endpoint = endpoint
@@ -31,8 +35,8 @@ class KubeVirtPeer(Object):
 
     @cached_property
     def _data(self) -> List[Data]:
-        units = self.relation.units | {self.model.unit}
         if self.relation:
+            units = self.relation.units | {self.model.unit}
             return [Data(**self.relation.data[u]) for u in units]
         return []
 
@@ -61,12 +65,13 @@ class KubeVirtPeer(Object):
         return True
 
     def discover(self) -> None:
+        """Determine if this host supports kvm, and informs peers."""
         if self.relation:
             self.relation.data[self.model.unit].update(
                 {"supports-kvm": "true" if Path("/dev/kvm").exists() else "false"}
             )
 
     @property
-    def supports_kvm(self) -> bool:
+    def supports_kvm(self) -> Optional[bool]:
         """At least one peer supports kvm."""
         return any(_.supports_kvm for _ in self._data) if self.is_ready else None

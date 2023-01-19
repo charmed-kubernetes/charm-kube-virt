@@ -2,7 +2,6 @@
 # Copyright 2022 Adam Dyess
 # See LICENSE file for licensing details.
 
-import asyncio
 import logging
 import shlex
 import urllib.request
@@ -25,9 +24,9 @@ async def vsphere_overlay(ops_test: OpsTest) -> Path:
     bundles_dst_dir = ops_test.tmp_path / "bundles"
     bundles_dst_dir.mkdir(exist_ok=True)
     overlay = bundles_dst_dir / "vsphere-overlay.yaml"
-    URL = "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/overlays/vsphere-overlay.yaml"
+    url = "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/overlays/vsphere-overlay.yaml"
     with overlay.open("wb") as fp:
-        with urllib.request.urlopen(URL) as f:
+        with urllib.request.urlopen(url) as f:
             fp.write(f.read())
     yield overlay
 
@@ -67,8 +66,8 @@ async def test_build_and_deploy(ops_test: OpsTest, vsphere_overlay: Path):
 
 
 async def test_kubevirt_deployed(kubernetes):
-    KubeVirt = get_generic_resource("kubevirt.io/v1", "KubeVirt")
-    kubevirt = await kubernetes.get(KubeVirt, name="kubevirt", namespace="kubevirt")
+    kube_virt_cls = get_generic_resource("kubevirt.io/v1", "KubeVirt")
+    kubevirt = await kubernetes.get(kube_virt_cls, name="kubevirt", namespace="kubevirt")
     assert kubevirt.status["phase"] == "Deployed"
 
 
