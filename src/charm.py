@@ -98,7 +98,14 @@ class CharmKubeVirtCharm(CharmBase):
             self.unit.status = WaitingStatus(", ".join(unready))
             return
 
-        self.unit.status = ActiveStatus("Ready")
+        phases = ", ".join(
+            f"{name}: {phase}"
+            for manifest in self.collector.manifests.items()
+            for phase in manifest.phases()
+        )
+
+        StatusType = ActiveStatus if "Deployed" in phases else WaitingStatus
+        self.unit.status = StatusType(phases)
         if self.unit.is_leader():
             self.unit.set_workload_version(self.collector.short_version)
             self.app.status = ActiveStatus(self.collector.long_version)

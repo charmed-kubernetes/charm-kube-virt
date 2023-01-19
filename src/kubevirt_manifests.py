@@ -89,3 +89,12 @@ class KubeVirtOperator(Manifests):
             return f"pvc-tolerate-less-space-up-to-percent is not in range: 0 < {percent} < 100"
 
         return None
+
+    def phases(self):
+        """Details phases of resources in this manifest."""
+        return sorted(
+            phase
+            for obj in self.installed_resources()
+            if obj.kind == "KubeVirt"
+            for phase in [obj.resource.status["phase"]]
+        )
