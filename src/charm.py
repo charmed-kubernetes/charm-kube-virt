@@ -219,7 +219,7 @@ class CharmKubeVirtCharm(CharmBase):
     def _setup_kvm(self) -> Tuple[str, bool]:
         """Apply machine changes to run qemu-kvm workloads."""
         if not self.stored.has_kvm:
-            "", False
+            return "", False
 
         # Symlink installed binary to expected location
         ubuntu_installed = Path("/usr/bin/qemu-system-x86_64")
