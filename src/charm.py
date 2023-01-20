@@ -4,7 +4,9 @@
 """Dispatch logic for the kube-virt operator charm."""
 
 import logging
+import subprocess
 from pathlib import Path
+from typing import Tuple
 
 import charms.operator_libs_linux.v0.apt as apt
 from charms.operator_libs_linux.v0.apt import PackageError, PackageNotFoundError
@@ -21,6 +23,35 @@ from kubevirt_peer import KubeVirtPeer
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
+
+
+def adjust_libvirtd_aa() -> Tuple[str, bool]:
+    """Adjust usr.sbin.libvirtd apparmor profile."""
+    aa_profile = Path("/etc/apparmor.d/usr.sbin.libvirtd")
+    if not aa_profile.exists():
+        return f"apparmor profile not available {aa_profile}", True
+    lines = aa_profile.read_text().splitlines()
+    pux_found = False
+    insertable = "  /usr/libexec/qemu-kvm PUx,"
+    for idx, line in enumerate(lines):
+        line_pux = line.endswith("PUx,")
+        pux_found |= line_pux
+        if pux_found and not line_pux:
+            print("insert line here -- eject")
+            lines.insert(idx, insertable)
+            break
+        if insertable == line:
+            print("inserted line already found -- eject")
+            break
+    aa_profile.write_text("\n".join(lines))
+
+    try:
+        subprocess.check_call(["systemctl", "reload", "apparmor.service"])
+    except subprocess.CalledProcessError as e:
+        msg = f"could not reload apparmor service. Reason: {e}"
+        return msg, False
+
+    return "", False
 
 
 class CharmKubeVirtCharm(CharmBase):
@@ -185,37 +216,61 @@ class CharmKubeVirtCharm(CharmBase):
         self.stored.deployed = False
         self._install_or_upgrade(event)
 
-    def _upgrade_qemu(self, event):
+    def _setup_kvm(self) -> Tuple[str, bool]:
+        """Apply machine changes to run qemu-kvm workloads."""
+        if not self.stored.has_kvm:
+            "", False
+
+        # Symlink installed binary to expected location
+        ubuntu_installed = Path("/usr/bin/qemu-system-x86_64")
+        if not ubuntu_installed.exists():
+            return f"qemu-kvm not installed at {ubuntu_installed}", True
+
+        kubevirt_expected = Path("/usr/libexec/qemu-kvm")
+        if not kubevirt_expected.exists():
+            kubevirt_expected.symlink_to(ubuntu_installed)
+
+        return adjust_libvirtd_aa()
+
+    def _upgrade_qemu(self) -> Tuple[str, bool]:
         self.unit.status = MaintenanceStatus("Installing Qemu")
         self.stored.has_kvm = self.kube_virt.dev_kvm_exists
+        logger.info("Installing apt packages")
+        packages = ["qemu"]
+
+        if self.stored.has_kvm:
+            packages += [
+                "qemu-system-x86",
+                "libvirt-daemon-system",
+                "libvirt-clients",
+                "bridge-utils",
+            ]
+
         try:
-            # Run `apt-get update` and add qemu
-            logger.info("Installing apt packages")
-            packages = ["qemu"]
-
-            if self.stored.has_kvm:
-                packages += [
-                    "qemu-kvm",
-                    "libvirt-daemon-system",
-                    "libvirt-clients",
-                    "bridge-utils",
-                ]
-
+            # Run `apt-get update` and add packages
             apt.add_package(packages, update_cache=True)
-
-            if self.stored.has_kvm:
-                # TODO: Need to update apparmor settings
-                # "/usr/libexec/qemu-kvm PUx,"
-                pass
-
         except PackageNotFoundError:
-            logger.error("a specified package not found in package cache or on system")
+            msg = "a specified package not found in package cache or on system"
+            return msg, False
         except PackageError as e:
-            logger.error("could not install package. Reason: %s", e.message)
+            msg = f"could not install package. Reason: {e}"
+            return msg, False
+
+        return self._setup_kvm()
 
     def _install_or_upgrade(self, event):
         self._kube_virt(event)
-        self._upgrade_qemu(event)
+
+        msg, retriable = self._upgrade_qemu()
+        if retriable:
+            logger.error(msg)
+            self.unit.status = WaitingStatus(msg)
+            event.defer()
+            return
+        elif msg:
+            logger.warning(msg)
+            self.unit.status = BlockedStatus(msg)
+            return
 
         if not self.stored.config_hash:
             return

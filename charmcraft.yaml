@@ -23,4 +23,3 @@ parts:
     charm-python-packages: [setuptools, pip]
     prime:
       - upstream/**
-      - files/**
