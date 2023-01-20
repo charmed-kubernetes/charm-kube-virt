@@ -38,7 +38,11 @@ jobs:
           credentials-yaml: ${{ secrets.CREDENTIALS_YAML }}
           clouds-yaml: ${{ secrets.CLOUDS_YAML }}
           bootstrap-constraints: "arch=amd64 cores=2 mem=4G"
-          bootstrap-options: "${{ secrets.FOCAL_BOOTSTRAP_OPTIONS }} --model-default datastore=vsanDatastore --model-default primary-network=VLAN_2763"
+          bootstrap-options: >-
+            ${{ secrets.FOCAL_BOOTSTRAP_OPTIONS }} 
+            --model-default datastore=vsanDatastore
+            --model-default primary-network=VLAN_2763
+            --model-default force-vm-hardware-version=17
       - name: Run test
         run: tox -e integration -- --model-config=.github/data/proxy_config.yaml
       - name: Setup Debug Artifact Collection
