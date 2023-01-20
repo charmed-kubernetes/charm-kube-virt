@@ -21,7 +21,7 @@ options:
         juju config kube-virt --reset image-registry
 
   software-emulation:
-    type: bool
+    type: boolean
     description: |
       Whether to allow software-emulation of VMs
       true: allows such behavior
@@ -34,6 +34,17 @@ options:
         juju config kube-virt software-emulation=false
 
         juju config kube-virt --reset software-emulation
+
+  pvc-tolerate-less-space-up-to-percent:
+    type: int
+    description: |
+      Filesystem PVCs:
+        Since not every storage provisioner provides volumes 
+        with the exact usable amount of space as requested 
+        (e.g. due to filesystem overhead), KubeVirt tolerates 
+        up to 10% less available space. 
+        
+    default: 10
 
   operator-release:
     type: string

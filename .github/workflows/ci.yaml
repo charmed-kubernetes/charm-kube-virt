@@ -20,38 +20,43 @@ jobs:
     with:
       python: "['3.9', '3.10', '3.11']"
 
-  charmcraft-build:
-    name: Build Charm
-    runs-on: ubuntu-latest
+  integration-tests:
+    name: Integration test with VMWare
+    runs-on: self-hosted
+    timeout-minutes: 360
     steps:
       - name: Check out code
         uses: actions/checkout@v2
-      - name: Install and prepare LXD snap environment
-        run: |
-          sudo apt-get remove -qy lxd lxd-client | true
-          sudo snap list lxd | true
-          sudo snap install lxd --channel=latest/stable
-          sudo snap refresh lxd --channel=latest/stable
-          sudo lxd waitready
-          sudo lxd init --auto
-          sudo chmod a+wr /var/snap/lxd/common/lxd/unix.socket
-          sudo lxc network set lxdbr0 ipv6.address none
-          sudo usermod -a -G lxd $USER
-          sg lxd -c 'lxc version'
-      - name: Install Charmcraft
-        run: |
-          sudo snap install charmcraft --classic --channel=latest/stable
-      - name: Build Charm
-        run: |
-          sg lxd -c 'charmcraft pack -v'
-      - name: Upload charm artifact
-        uses: actions/upload-artifact@v3
+      - name: Setup Python
+        uses: actions/setup-python@v2
         with:
-          name: kubevirt.charm
-          path: ./kubevirt*.charm
+          python-version: 3.8
+      - name: Setup operator environment
+        uses: charmed-kubernetes/actions-operator@main
+        with:
+          provider: vsphere
+          credentials-yaml: ${{ secrets.CREDENTIALS_YAML }}
+          clouds-yaml: ${{ secrets.CLOUDS_YAML }}
+          bootstrap-constraints: "arch=amd64 cores=2 mem=4G"
+          bootstrap-options: >-
+            ${{ secrets.FOCAL_BOOTSTRAP_OPTIONS }} 
+            --model-default datastore=vsanDatastore
+            --model-default primary-network=VLAN_2763
+            --model-default force-vm-hardware-version=17
+      - name: Run test
+        run: tox -e integration -- --model-config=.github/data/proxy_config.yaml
+      - name: Setup Debug Artifact Collection
+        if: ${{ failure() }}
+        run: mkdir tmp
+      - name: Collect Juju Status
+        if: ${{ failure() }}
+        run: |
+          juju status 2>&1 | tee tmp/juju-status.txt
+          juju-crashdump -s -m controller -a debug-layer -a config -o tmp/
+          mv juju-crashdump-* tmp/ | true
       - name: Upload debug artifacts
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
-          name: charmcraft-logs
-          path: /home/runner/snap/charmcraft/common/cache/charmcraft/log/charmcraft-*.log
+          name: test-run-artifacts
+          path: tmp

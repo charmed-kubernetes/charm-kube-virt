@@ -1,0 +1,12 @@
+description: Overlay for attaching current charm
+applications:
+  kubernetes-control-plane:
+    options:
+      allow-privileged: "true"
+  kubevirt:
+    charm: {{charm}}
+relations:
+- - kubernetes-control-plane:kube-control
+  - kubevirt:kube-control
+- - kubernetes-worker:juju-info
+  - kubevirt:juju-info
