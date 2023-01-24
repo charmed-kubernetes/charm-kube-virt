@@ -4,9 +4,12 @@
 """Dispatch logic for the kube-virt operator charm."""
 
 import logging
+import os
 import subprocess
+import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Tuple
+from typing import Optional
 
 import charms.operator_libs_linux.v0.apt as apt
 from charms.operator_libs_linux.v0.apt import PackageError, PackageNotFoundError
@@ -23,35 +26,31 @@ from kubevirt_peer import KubeVirtPeer
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
+VIRTCTL_URL = "https://github.com/kubevirt/kubevirt/releases/download/{version}/virtctl-{version}-linux-{arch}"
 
 
-def adjust_libvirtd_aa() -> Tuple[str, bool]:
-    """Adjust usr.sbin.libvirtd apparmor profile."""
-    aa_profile = Path("/etc/apparmor.d/usr.sbin.libvirtd")
-    if not aa_profile.exists():
-        return f"apparmor profile not available {aa_profile}", True
-    lines = aa_profile.read_text().splitlines()
-    pux_found = False
-    insertable = "  /usr/libexec/qemu-kvm PUx,"
-    for idx, line in enumerate(lines):
-        line_pux = line.endswith("PUx,")
-        pux_found |= line_pux
-        if pux_found and not line_pux:
-            print("insert line here -- eject")
-            lines.insert(idx, insertable)
-            break
-        if insertable == line:
-            print("inserted line already found -- eject")
-            break
-    aa_profile.write_text("\n".join(lines))
-
+@contextmanager
+def _modified_env(**update: str):
+    orig = dict(os.environ)
+    os.environ.update(update)
     try:
-        subprocess.check_call(["systemctl", "reload", "apparmor.service"])
-    except subprocess.CalledProcessError as e:
-        msg = f"could not reload apparmor service. Reason: {e}"
-        return msg, False
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(orig)
 
-    return "", False
+
+def _fetch_file(url, dest):
+    proxies = {
+        "https_proxy": os.environ.get("JUJU_CHARM_HTTPS_PROXY"),
+        "http_proxy": os.environ.get("JUJU_CHARM_HTTP_PROXY"),
+        "no_proxy": os.environ.get("JUJU_CHARM_NO_PROXY"),
+    }
+    with _modified_env(**proxies):
+        proxy = urllib.request.ProxyHandler()
+        opener = urllib.request.build_opener(proxy)
+        urllib.request.install_opener(opener)
+        urllib.request.urlretrieve(url, filename=dest)
 
 
 class CharmKubeVirtCharm(CharmBase):
@@ -68,21 +67,18 @@ class CharmKubeVirtCharm(CharmBase):
 
         # Config Validator and datastore
         self.charm_config = CharmConfig(self)
+        self.kube_operator = KubeVirtOperator(
+            self, self.charm_config, self.kube_control, self.kube_virt
+        )
 
         self.stored.set_default(
             cluster_tag=None,  # passing along to the integrator from the kube-control relation
             config_hash=None,  # hashed value of the charm config once valid
+            installed=False,  # True if the binaries have been installed
             deployed=False,  # True if the config has been applied after new hash
             has_kvm=False,  # True if this unit has /dev/kvm
         )
-        self.collector = Collector(
-            KubeVirtOperator(
-                self,
-                self.charm_config,
-                self.kube_control,
-                self.kube_virt,
-            )
-        )
+        self.collector = Collector(self.kube_operator)
         self.framework.observe(self.on.kube_control_relation_created, self._kube_control)
         self.framework.observe(self.on.kube_control_relation_joined, self._kube_control)
         self.framework.observe(self.on.kube_control_relation_changed, self._kube_control)
@@ -104,6 +100,19 @@ class CharmKubeVirtCharm(CharmBase):
         self.framework.observe(self.on.config_changed, self._merge_config)
         self.framework.observe(self.on.stop, self._cleanup)
 
+    def _ops_wait_for(self, event, msg: str, exc_info=None) -> str:
+        self.unit.status = WaitingStatus(msg)
+        if exc_info:
+            logger.exception(msg)
+        event.defer()
+        return msg
+
+    def _ops_blocked_by(self, msg: str, exc_info=None) -> str:
+        self.unit.status = BlockedStatus(msg)
+        if exc_info:
+            logger.exception(msg)
+        return msg
+
     def _list_versions(self, event):
         self.collector.list_versions(event)
 
@@ -123,7 +132,7 @@ class CharmKubeVirtCharm(CharmBase):
         return self.collector.apply_missing_resources(event, manifests, resources)
 
     def _update_status(self, _):
-        if not self.stored.deployed:
+        if not self.stored.deployed or not self.stored.installed:
             return
 
         unready = self.collector.unready
@@ -176,8 +185,7 @@ class CharmKubeVirtCharm(CharmBase):
             return False
         if not (Path.home() / ".kube/config").exists():
             logger.info("Expected kubeconfig not found on filesystem")
-            self.unit.status = WaitingStatus("Waiting for kubeconfig")
-            event.defer()
+            self._ops_wait_for(event, "Waiting for kubeconfig")
             return False
         return True
 
@@ -213,29 +221,58 @@ class CharmKubeVirtCharm(CharmBase):
             return
 
         self.stored.config_hash = new_hash
-        self.stored.deployed = False
-        self._install_or_upgrade(event)
+        self._install_manifests(event)
 
-    def _setup_kvm(self) -> Tuple[str, bool]:
+    def _setup_kvm(self, event) -> Optional[str]:
         """Apply machine changes to run qemu-kvm workloads."""
         if not self.stored.has_kvm:
-            return "", False
+            return None
 
         # Symlink installed binary to expected location
         ubuntu_installed = Path("/usr/bin/qemu-system-x86_64")
         if not ubuntu_installed.exists():
-            return f"qemu-kvm not installed at {ubuntu_installed}", True
+            logger.info(f"qemu-kvm not installed at {ubuntu_installed}")
+            return self._ops_wait_for(event, "Waiting for qemu-kvm")
 
         kubevirt_expected = Path("/usr/libexec/qemu-kvm")
         if not kubevirt_expected.exists():
             kubevirt_expected.symlink_to(ubuntu_installed)
+        return None
 
-        return adjust_libvirtd_aa()
+    def _adjust_libvirtd_aa(self, event) -> Optional[str]:
+        """Adjust usr.sbin.libvirtd apparmor profile."""
+        if not self.stored.has_kvm:
+            return None
 
-    def _upgrade_qemu(self) -> Tuple[str, bool]:
-        self.unit.status = MaintenanceStatus("Installing Qemu")
+        aa_profile = Path("/etc/apparmor.d/usr.sbin.libvirtd")
+        if not aa_profile.exists():
+            logger.info(f"AppArmor libvirtd profile not available {aa_profile}")
+            return self._ops_wait_for(event, "Waiting for AppArmor libvirtd profile")
+
+        lines = aa_profile.read_text().splitlines()
+        pux_found = False
+        insertable = "  /usr/libexec/qemu-kvm PUx,"
+        for idx, line in enumerate(lines):
+            line_pux = line.endswith("PUx,")
+            pux_found |= line_pux
+            if pux_found and not line_pux:
+                print("insert line here -- eject")
+                lines.insert(idx, insertable)
+                break
+            if insertable == line:
+                print("inserted line already found -- eject")
+                break
+        aa_profile.write_text("\n".join(lines))
+
+        try:
+            subprocess.check_call(["systemctl", "reload", "apparmor.service"])
+        except subprocess.CalledProcessError:
+            return self._ops_blocked_by("Could not reload apparmor service", exc_info=True)
+        return None
+
+    def _install_binaries(self, event) -> Optional[str]:
+        self.unit.status = MaintenanceStatus("Installing Binaries")
         self.stored.has_kvm = self.kube_virt.dev_kvm_exists
-        logger.info("Installing apt packages")
         packages = ["qemu"]
 
         if self.stored.has_kvm:
@@ -246,32 +283,37 @@ class CharmKubeVirtCharm(CharmBase):
                 "bridge-utils",
             ]
 
+        logger.info(f"Installing apt packages {', '.join(packages)}")
         try:
             # Run `apt-get update` and add packages
             apt.add_package(packages, update_cache=True)
         except PackageNotFoundError:
-            msg = "a specified package not found in package cache or on system"
-            return msg, False
-        except PackageError as e:
-            msg = f"could not install package. Reason: {e}"
-            return msg, False
+            return self._ops_blocked_by("Apt packages not found.", exc_info=True)
+        except PackageError:
+            return self._ops_blocked_by("Could not apt install packages", exc_info=True)
 
-        return self._setup_kvm()
+        logger.info("Installing virtctl")
+        try:
+            fmt = dict(version=self.kube_operator.current_release, arch="amd64")
+            virtctl = Path("virtctl")
+            _fetch_file(VIRTCTL_URL.format(**fmt), virtctl)
+        except urllib.request.HTTPError:
+            return self._ops_blocked_by("Could not download virtctl", exc_info=True)
+
+        virtctl.chmod(0o775)
+        return None
 
     def _install_or_upgrade(self, event):
-        self._kube_virt(event)
+        error = self._kube_virt(event)
+        error = error or self._install_binaries(event)
+        error = error or self._setup_kvm(event)
+        error = error or self._adjust_libvirtd_aa(event)
+        self.stored.installed = not error
 
-        msg, retriable = self._upgrade_qemu()
-        if retriable:
-            logger.error(msg)
-            self.unit.status = WaitingStatus(msg)
-            event.defer()
-            return
-        elif msg:
-            logger.warning(msg)
-            self.unit.status = BlockedStatus(msg)
-            return
+        error or self._install_manifests(event)
 
+    def _install_manifests(self, event):
+        self.stored.deployed = False
         if not self.stored.config_hash:
             return
         if self.unit.is_leader():
@@ -281,8 +323,7 @@ class CharmKubeVirtCharm(CharmBase):
                 try:
                     controller.apply_manifests()
                 except ManifestClientError:
-                    self.unit.status = WaitingStatus("Waiting for kube-apiserver")
-                    event.defer()
+                    self._ops_wait_for(event, "Waiting for kube-apiserver", exc_info=True)
                     return
         self.stored.deployed = True
 
@@ -296,8 +337,7 @@ class CharmKubeVirtCharm(CharmBase):
                 try:
                     controller.delete_manifests(ignore_unauthorized=True)
                 except ManifestClientError:
-                    self.unit.status = WaitingStatus("Waiting for kube-apiserver")
-                    event.defer()
+                    self._ops_wait_for(event, "Waiting for kube-apiserver", exc_info=True)
                     return
 
         self.unit.status = MaintenanceStatus("Shutting down")
