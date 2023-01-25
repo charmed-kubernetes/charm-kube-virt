@@ -32,7 +32,7 @@ VIRTCTL_URL = "https://github.com/kubevirt/kubevirt/releases/download/{version}/
 @contextmanager
 def _modified_env(**update: str):
     orig = dict(os.environ)
-    os.environ.update(update)
+    os.environ.update({k: v for k, v in update.items() if isinstance(v, str)})
     try:
         yield
     finally:
@@ -42,9 +42,8 @@ def _modified_env(**update: str):
 
 def _fetch_file(url, dest):
     proxies = {
-        "https_proxy": os.environ.get("JUJU_CHARM_HTTPS_PROXY"),
-        "http_proxy": os.environ.get("JUJU_CHARM_HTTP_PROXY"),
-        "no_proxy": os.environ.get("JUJU_CHARM_NO_PROXY"),
+        "HTTPS_PROXY": os.environ.get("JUJU_CHARM_HTTPS_PROXY"),
+        "HTTP_PROXY": os.environ.get("JUJU_CHARM_HTTP_PROXY"),
     }
     with _modified_env(**proxies):
         proxy = urllib.request.ProxyHandler()
