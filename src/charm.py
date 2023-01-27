@@ -134,7 +134,20 @@ class CharmKubeVirtCharm(CharmBase):
         if not self.stored.deployed or not self.stored.installed:
             return
 
-        unready = self.collector.unready
+        def unready_conditions(cond_pair):
+            (_, rsc), cond = cond_pair
+            if rsc.kind == "Kubevirt" and cond.status == "False":
+                if cond.type in ["Degraded", "Progressing"]:
+                    # ignore not degraded or not progressing
+                    return None
+
+            if cond.status == "True":
+                return None
+
+            return f"{rsc} is not {cond.type}"
+
+        unready = list(filter(unready_conditions, self.collector.conditions.items()))
+
         if unready:
             self.unit.status = WaitingStatus(", ".join(unready))
             return
