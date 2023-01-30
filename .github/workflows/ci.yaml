@@ -18,7 +18,7 @@ jobs:
     needs: 
       - call-inclusive-naming-check
     with:
-      python: "['3.9', '3.10', '3.11']"
+      python: "['3.8', '3.9', '3.10', '3.11']"
 
   integration-tests:
     name: Integration test with VMWare
