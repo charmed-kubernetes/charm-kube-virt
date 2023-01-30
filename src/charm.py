@@ -146,7 +146,11 @@ class CharmKubeVirtCharm(CharmBase):
 
             return f"{rsc} is not {cond.type}"
 
-        unready = list(filter(unready_conditions, self.collector.conditions.items()))
+        unready = [
+            cond
+            for pair in self.collector.conditions.items()
+            if (cond := unready_conditions(pair))
+        ]
 
         if unready:
             self.unit.status = WaitingStatus(", ".join(unready))
