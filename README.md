@@ -41,20 +41,20 @@ for developer guidance.
 Deploying the charm into an existing juju machine model with `charmed-kubernetes` is as simple as 
 
 ```bash
-$ juju deploy kubevirt --channel <channel> --config operator-release='<v0.min.bug>' --trust
+juju deploy kubevirt --channel <channel> --config operator-release='<v0.min.bug>' --trust
 ```
 
 Next, the charm will need to be related to every `kubernetes-worker` in the model. If you have multiple
 kubernetes-worker applications, you may relate the same charm to those multiple applications.
 
 ```bash
-$ juju relate kubernetes-worker kubevirt:juju-info
+juju relate kubernetes-worker kubevirt:juju-info
 ```
 
 Lastly, the charm will need to relate to the control-plane charm in the model.  
 
 ```bash
-$ juju relate kubernetes-control-plane kubevirt:kube-control
+juju relate kubernetes-control-plane kubevirt:kube-control
 ```
 
 This will install a subordinate unit on every worker, use its cluster credentials to
@@ -135,5 +135,5 @@ or install a `virtctl` plugin into `kubectl`.  See [upstream docs](https://kubev
 for more details on using `virtctl`.  For ease of use this charm can expose `virtctl` through `juju run`
 
 ```bash
-$ juju run --unit kubevirt/leader -- ./virtctl help
+juju run --unit kubevirt/leader -- ./virtctl help
 ```
