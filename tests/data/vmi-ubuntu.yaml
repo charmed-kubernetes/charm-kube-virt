@@ -19,6 +19,12 @@ spec:
       - name: cloudinitdisk
         disk:
           bus: virtio
+      interfaces:
+      - name: default
+        bridge: {}
+  networks:
+  - name: default
+    pod: {}
   volumes:
   - name: containerdisk
     containerDisk:

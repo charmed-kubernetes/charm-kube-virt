@@ -90,11 +90,12 @@ class KubeVirtOperator(Manifests):
 
         return None
 
+    @property
     def phases(self):
         """Details phases of resources in this manifest."""
         return sorted(
-            phase
+            (obj, phase)
             for obj in self.installed_resources()
             if obj.kind == "KubeVirt"
-            for phase in [obj.resource.status["phase"]]
+            for phase in [obj.resource.status["phase"] if obj.resource.status else "Unknown"]
         )

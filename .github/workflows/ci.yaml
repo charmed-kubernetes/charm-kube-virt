@@ -18,7 +18,7 @@ jobs:
     needs: 
       - call-inclusive-naming-check
     with:
-      python: "['3.9', '3.10', '3.11']"
+      python: "['3.8', '3.9', '3.10', '3.11']"
 
   integration-tests:
     name: Integration test with VMWare
@@ -26,9 +26,9 @@ jobs:
     timeout-minutes: 360
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.8
       - name: Setup operator environment
