@@ -32,7 +32,7 @@ As an optional addon to charmed-kubernetes, this charm allows for installation o
 
 Please see the [Juju SDK docs](https://juju.is/docs/sdk) for guidelines
 on enhancements to this charm following best practice guidelines, and
-[CONTRIBUTING.md](https://github.com/charmed-kubernetes/charm-azure-cloud-provider/blob/main/CONTRIBUTING.md)
+[CONTRIBUTING.md](https://github.com/charmed-kubernetes/charm-kube-virt/blob/main/CONTRIBUTING.md)
 for developer guidance.
 
 
