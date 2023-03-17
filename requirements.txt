@@ -1,5 +1,5 @@
-ops >= 1.5.0
-lightkube>=0.10.1,<1.0.
+ops>=1.3.0,<2.0.0
+lightkube>=0.10.1,<1.0.0
 pydantic
-git+https://github.com/canonical/ops-lib-manifest.git@a02d83af8febeed39b7324b0247368cfc7105d73
+ops.manifest>=1.1.0,<2.0.0
 git+https://github.com/charmed-kubernetes/interface-kube-control.git@6dd289d1c795fdeda1bed17873b8d6562227c829#subdirectory=ops
