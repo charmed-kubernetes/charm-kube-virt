@@ -128,7 +128,13 @@ class CharmKubeVirtCharm(CharmBase):
     def _sync_resources(self, event):
         manifests = event.params.get("manifest", "")
         resources = event.params.get("resources", "")
-        return self.collector.apply_missing_resources(event, manifests, resources)
+        try:
+            self.collector.apply_missing_resources(event, manifests, resources)
+        except ManifestClientError:
+            msg = "Failed to apply missing resources. API Server unavailable."
+            event.set_results({"result": msg})
+        else:
+            self.stored.deployed = True
 
     def _update_status(self, _):
         if not self.stored.deployed or not self.stored.installed:
@@ -228,12 +234,11 @@ class CharmKubeVirtCharm(CharmBase):
                 return
             new_hash += controller.hash()
 
-        if new_hash == self.stored.config_hash:
+        self.stored.deployed = False
+        if self._install_manifests(event, config_hash=new_hash):
+            self.stored.config_hash = new_hash
+            self.stored.deployed = True
             self._update_status(event)
-            return
-
-        self.stored.config_hash = new_hash
-        self._install_manifests(event)
 
     def _setup_kvm(self, event) -> Optional[str]:
         """Apply machine changes to run qemu-kvm workloads."""
@@ -324,20 +329,22 @@ class CharmKubeVirtCharm(CharmBase):
 
         error or self._install_manifests(event)
 
-    def _install_manifests(self, event):
-        self.stored.deployed = False
-        if not self.stored.config_hash:
-            return
+    def _install_manifests(self, event, config_hash=None):
+        if self.stored.config_hash == config_hash:
+            logger.info("Skipping until the config is evaluated.")
+            return True
         if self.unit.is_leader():
             self.unit.status = MaintenanceStatus("Deploying KubeVirt Operator")
             self.unit.set_workload_version("")
             for controller in self.collector.manifests.values():
                 try:
                     controller.apply_manifests()
-                except ManifestClientError:
-                    self._ops_wait_for(event, "Waiting for kube-apiserver", exc_info=True)
-                    return
-        self.stored.deployed = True
+                except ManifestClientError as e:
+                    self._ops_wait_for(event, "Waiting for kube-apiserver")
+                    logger.warn(f"Encountered retryable installation error: {e}")
+                    event.defer()
+                    return False
+        return True
 
     def _cleanup(self, event):
         if not self.stored.config_hash:
@@ -350,6 +357,7 @@ class CharmKubeVirtCharm(CharmBase):
                     controller.delete_manifests(ignore_unauthorized=True)
                 except ManifestClientError:
                     self._ops_wait_for(event, "Waiting for kube-apiserver", exc_info=True)
+                    event.defer()
                     return
 
         self.unit.status = MaintenanceStatus("Shutting down")

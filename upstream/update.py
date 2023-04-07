@@ -84,13 +84,7 @@ class Release:
 
     def __lt__(self, other) -> bool:
         """Compare version numbers."""
-        (
-            a,
-            b,
-        ) = (
-            self.name[1:],
-            other.name[1:],
-        )
+        a, b = self.name[1:], other.name[1:]
         return VersionInfo.parse(a) < VersionInfo.parse(b)
 
 
