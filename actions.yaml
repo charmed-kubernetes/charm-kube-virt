@@ -45,3 +45,5 @@ sync-resources:
         Space separated list of kubernetes resource types
         to use a filter during the sync. This helps limit
         which missing resources are applied.
+sync-install:
+  description: Reinstall binaries and their configuration

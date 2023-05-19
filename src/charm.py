@@ -6,6 +6,7 @@
 import logging
 import os
 import subprocess
+import urllib.error
 import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
@@ -73,7 +74,7 @@ class CharmKubeVirtCharm(CharmBase):
         self.stored.set_default(
             cluster_tag=None,  # passing along to the integrator from the kube-control relation
             config_hash=None,  # hashed value of the charm config once valid
-            installed=False,  # True if the binaries have been installed
+            install_failure=None,  # None if the binaries have been installed successfully
             deployed=False,  # True if the config has been applied after new hash
             has_kvm=False,  # True if this unit has /dev/kvm
         )
@@ -92,6 +93,7 @@ class CharmKubeVirtCharm(CharmBase):
         self.framework.observe(self.on.list_resources_action, self._list_resources)
         self.framework.observe(self.on.scrub_resources_action, self._scrub_resources)
         self.framework.observe(self.on.sync_resources_action, self._sync_resources)
+        self.framework.observe(self.on.sync_install_action, self._binary_installation)
         self.framework.observe(self.on.update_status, self._update_status)
 
         self.framework.observe(self.on.install, self._install_or_upgrade)
@@ -136,8 +138,14 @@ class CharmKubeVirtCharm(CharmBase):
         else:
             self.stored.deployed = True
 
-    def _update_status(self, _):
-        if not self.stored.deployed or not self.stored.installed:
+    def _update_status(self, event):
+        if not self.stored.deployed:
+            logger.info("update-status: hook discovered not yet deployed")
+            return
+
+        if self.stored.install_failure:
+            logger.info("update-status: hook discovered not yet installed...retrying")
+            self._ops_blocked_by(self.stored.install_failure)
             return
 
         def unready_conditions(cond_pair):
@@ -314,19 +322,25 @@ class CharmKubeVirtCharm(CharmBase):
             fmt = dict(version=self.kube_operator.current_release, arch="amd64")
             virtctl = Path("virtctl")
             _fetch_file(VIRTCTL_URL.format(**fmt), virtctl)
-        except urllib.request.HTTPError:
+        except urllib.error.URLError:
             return self._ops_blocked_by("Could not download virtctl", exc_info=True)
 
         virtctl.chmod(0o775)
         return None
 
-    def _install_or_upgrade(self, event):
+    def _binary_installation(self, event):
+        logger.info("Installing KubeVirt binaries...")
         error = self._kube_virt(event)
         error = error or self._install_binaries(event)
         error = error or self._setup_kvm(event)
         error = error or self._adjust_libvirtd_aa(event)
-        self.stored.installed = not error
+        self.stored.install_failure = error
+        if error:
+            logger.error(error)
+        return error
 
+    def _install_or_upgrade(self, event):
+        error = self._binary_installation(event)
         error or self._install_manifests(event)
 
     def _install_manifests(self, event, config_hash=None):
