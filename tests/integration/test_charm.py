@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from async_timeout import timeout
 from lightkube.codecs import from_dict
 from lightkube.generic_resource import get_generic_resource
 from pytest_operator.plugin import OpsTest
@@ -71,10 +72,11 @@ async def test_kubevirt_deployed(kubernetes):
     assert kubevirt.status["phase"] == "Deployed"
 
 
-async def wait_for(client, resource, match):
-    async for op, dep in client.watch(resource):
-        if match(op, dep):
-            return
+async def wait_for(client, resource, match, delay=15):
+    async with timeout(delay):
+        async for op, dep in client.watch(resource):
+            if match(op, dep):
+                return
 
 
 async def test_launch_vmi(kubernetes):
