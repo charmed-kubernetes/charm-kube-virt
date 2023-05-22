@@ -114,6 +114,7 @@ async def test_launch_vmi(kubernetes):
         lambda ops, dep: (
             dep.metadata.name == vmi.metadata.name and dep.status["phase"] == "Running"
         ),
+        delay=5 * 60,
     )
 
     instance = await kubernetes.get(type(vmi), vmi.metadata.name)
