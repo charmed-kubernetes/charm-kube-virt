@@ -12,6 +12,7 @@ import yaml
 from async_timeout import timeout
 from lightkube.codecs import from_dict
 from lightkube.generic_resource import get_generic_resource
+from lightkube.resources.core_v1 import Event
 from pytest_operator.plugin import OpsTest
 
 log = logging.getLogger(__name__)
@@ -21,14 +22,18 @@ APP_NAME = METADATA["name"]
 
 
 @pytest.fixture()
-async def vsphere_overlay(ops_test: OpsTest) -> Path:
-    bundles_dst_dir = ops_test.tmp_path / "bundles"
-    bundles_dst_dir.mkdir(exist_ok=True)
-    overlay = bundles_dst_dir / "vsphere-overlay.yaml"
-    url = "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/overlays/vsphere-overlay.yaml"
-    with overlay.open("wb") as fp:
-        with urllib.request.urlopen(url) as f:
-            fp.write(f.read())
+async def vsphere_overlay(ops_test: OpsTest) -> Path | None:
+    status = await ops_test.model.get_status()
+    detect_vsphere = "vsphere" in status.model.cloud_tag
+    overlay = None
+    if detect_vsphere:
+        bundles_dst_dir = ops_test.tmp_path / "bundles"
+        bundles_dst_dir.mkdir(exist_ok=True)
+        overlay = bundles_dst_dir / "vsphere-overlay.yaml"
+        url = "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/overlays/vsphere-overlay.yaml"
+        with overlay.open("wb") as fp:
+            with urllib.request.urlopen(url) as f:
+                fp.write(f.read())
     yield overlay
 
 
@@ -44,11 +49,14 @@ async def test_build_and_deploy(ops_test: OpsTest, vsphere_overlay: Path):
         log.info("Build Charm...")
         charm = await ops_test.build_charm(".")
 
-    overlays = [
-        OpsTest.Bundle("kubernetes-core", channel="edge"),
-        vsphere_overlay,
-        Path("tests/data/charm.yaml"),
-    ]
+    overlays = filter(
+        None,
+        [
+            OpsTest.Bundle("kubernetes-core", channel="edge"),
+            vsphere_overlay,
+            Path("tests/data/charm.yaml"),
+        ],
+    )
     bundle, *overlays = await ops_test.async_render_bundles(*overlays, charm=charm.resolve())
 
     log.info("Deploy Charm...")
@@ -72,11 +80,17 @@ async def test_kubevirt_deployed(kubernetes):
     assert kubevirt.status["phase"] == "Deployed"
 
 
-async def wait_for(client, resource, match, delay=15):
-    async with timeout(delay):
-        async for op, dep in client.watch(resource):
-            if match(op, dep):
-                return
+async def wait_for(client, object, match, delay=60):
+    try:
+        async with timeout(delay):
+            async for op, dep in client.watch(type(object)):
+                if match(op, dep):
+                    return
+    finally:
+        async for event in client.list(
+            Event, fields={"involvedObject.name": object.metadata.name}
+        ):
+            log.info(f"Event: {event.message}")
 
 
 async def test_launch_vmi(kubernetes):
@@ -85,7 +99,7 @@ async def test_launch_vmi(kubernetes):
     await kubernetes.apply(storage)
     await wait_for(
         kubernetes,
-        type(storage),
+        storage,
         lambda ops, dep: (
             dep.metadata.name == storage.metadata.name and dep.status.phase == "Bound"
         ),
@@ -96,7 +110,7 @@ async def test_launch_vmi(kubernetes):
     await kubernetes.apply(vmi)
     await wait_for(
         kubernetes,
-        type(vmi),
+        vmi,
         lambda ops, dep: (
             dep.metadata.name == vmi.metadata.name and dep.status["phase"] == "Running"
         ),
