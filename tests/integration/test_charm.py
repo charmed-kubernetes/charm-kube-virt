@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 import yaml
 from lightkube.codecs import from_dict
 from lightkube.generic_resource import get_generic_resource
@@ -19,7 +20,7 @@ METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 APP_NAME = METADATA["name"]
 
 
-@pytest.fixture()
+@pytest_asyncio.fixture()
 async def vsphere_overlay(ops_test: OpsTest) -> Path:
     bundles_dst_dir = ops_test.tmp_path / "bundles"
     bundles_dst_dir.mkdir(exist_ok=True)
