@@ -53,7 +53,7 @@ jobs:
             --model-default force-vm-hardware-version=17
 
       - name: Run test
-        run: tox -e integration -- --basetemp=/home/ubuntu/pytest --model-config=.github/data/proxy_config.yaml
+        run: tox -e integration -- --basetemp=/home/ubuntu/pytest
 
       - name: Setup Debug Artifact Collection
         if: ${{ failure() }}
