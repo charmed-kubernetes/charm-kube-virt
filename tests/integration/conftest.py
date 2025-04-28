@@ -6,6 +6,7 @@ import string
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from lightkube import AsyncClient, KubeConfig
 from lightkube.generic_resource import async_load_in_cluster_generic_resources
 from lightkube.models.meta_v1 import ObjectMeta
@@ -19,7 +20,7 @@ def module_name(request):
     return request.module.__name__.replace("_", "-")
 
 
-@pytest.fixture()
+@pytest_asyncio.fixture()
 async def kubeconfig(ops_test):
     kubeconfig_path = ops_test.tmp_path / "kubeconfig"
     retcode, stdout, stderr = await ops_test.run(
