@@ -1,4 +1,5 @@
 description: Overlay for attaching current charm
+series: {{ series | default('noble') }}
 applications:
   kubernetes-control-plane:
     options:

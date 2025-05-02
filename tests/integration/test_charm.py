@@ -33,7 +33,7 @@ async def vsphere_overlay(ops_test: OpsTest) -> Path:
 
 
 @pytest.mark.abort_on_fail
-async def test_build_and_deploy(ops_test: OpsTest, vsphere_overlay: Path):
+async def test_build_and_deploy(request, ops_test: OpsTest, vsphere_overlay: Path):
     """Build the charm-under-test and deploy it together with related charms.
 
     Assert on the unit status before any relations/configurations take place.
@@ -49,7 +49,11 @@ async def test_build_and_deploy(ops_test: OpsTest, vsphere_overlay: Path):
         vsphere_overlay,
         Path("tests/data/charm.yaml"),
     ]
-    bundle, *overlays = await ops_test.async_render_bundles(*overlays, charm=charm.resolve())
+    context = {
+        "charm": charm.resolve(),
+        "series": request.config.getoption("series"),
+    }
+    bundle, *overlays = await ops_test.async_render_bundles(*overlays, **context)
 
     log.info("Deploy Charm...")
     model = ops_test.model_full_name

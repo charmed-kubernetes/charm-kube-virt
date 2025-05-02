@@ -15,6 +15,10 @@ from lightkube.resources.core_v1 import Namespace
 log = logging.getLogger(__name__)
 
 
+def pytest_addoption(parser):
+    parser.addoption("--series", action="store", default="", help="Customize ubuntu series")
+
+
 @pytest.fixture(scope="module")
 def module_name(request):
     return request.module.__name__.replace("_", "-")
