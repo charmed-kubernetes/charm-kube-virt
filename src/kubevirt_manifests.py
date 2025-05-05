@@ -1,6 +1,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 """Implementation of KubeVirt specific details of the kubernetes manifests."""
+
 import logging
 import pickle
 from hashlib import md5
@@ -28,11 +29,14 @@ class UpdateKubeVirt(Patch):
             )
         dev_config = obj.spec["configuration"]["developerConfiguration"]
         log.info(
-            ("Enabling" if software_emulation else "Disabling") + " kubevirt software-emulation"
+            ("Enabling" if software_emulation else "Disabling")
+            + " kubevirt software-emulation"
         )
         dev_config["useEmulation"] = software_emulation
 
-        pvc_toleration = self.manifests.config.get("pvc-tolerate-less-space-up-to-percent")
+        pvc_toleration = self.manifests.config.get(
+            "pvc-tolerate-less-space-up-to-percent"
+        )
         log.info(f"kubevirt pvcTolerateLessSpaceUpToPercent={pvc_toleration}%")
         dev_config["pvcTolerateLessSpaceUpToPercent"] = pvc_toleration
 
@@ -97,5 +101,7 @@ class KubeVirtOperator(Manifests):
             (obj, phase)
             for obj in self.installed_resources()
             if obj.kind == "KubeVirt"
-            for phase in [obj.resource.status["phase"] if obj.resource.status else "Unknown"]
+            for phase in [
+                obj.resource.status["phase"] if obj.resource.status else "Unknown"
+            ]
         )

@@ -73,7 +73,9 @@ async def test_build_and_deploy(request, ops_test: OpsTest, vsphere_overlay: Pat
     assert rc == 0, f"Bundle deploy failed: {(stderr or stdout).strip()}"
 
     log.info(stdout)
-    await ops_test.model.block_until(lambda: APP_NAME in ops_test.model.applications, timeout=60)
+    await ops_test.model.block_until(
+        lambda: APP_NAME in ops_test.model.applications, timeout=60
+    )
 
     # Deploy the charm and wait for active/idle status
     await ops_test.model.wait_for_idle(wait_for_active=True, timeout=60 * 60)
@@ -81,7 +83,9 @@ async def test_build_and_deploy(request, ops_test: OpsTest, vsphere_overlay: Pat
 
 async def test_kubevirt_deployed(kubernetes):
     kube_virt_cls = get_generic_resource("kubevirt.io/v1", "KubeVirt")
-    kubevirt = await kubernetes.get(kube_virt_cls, name="kubevirt", namespace="kubevirt")
+    kubevirt = await kubernetes.get(
+        kube_virt_cls, name="kubevirt", namespace="kubevirt"
+    )
     assert kubevirt.status["phase"] == "Deployed"
 
 

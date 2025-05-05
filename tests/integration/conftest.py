@@ -16,7 +16,9 @@ log = logging.getLogger(__name__)
 
 
 def pytest_addoption(parser):
-    parser.addoption("--series", action="store", default="", help="Customize ubuntu series")
+    parser.addoption(
+        "--series", action="store", default="", help="Customize ubuntu series"
+    )
 
 
 @pytest.fixture(scope="module")
