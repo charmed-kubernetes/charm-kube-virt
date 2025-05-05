@@ -3,12 +3,12 @@
 # See LICENSE file for licensing details.
 
 import logging
+import re
 import shlex
 import urllib.request
 from pathlib import Path
 
 import pytest
-import pytest_asyncio
 import yaml
 from lightkube.codecs import from_dict
 from lightkube.generic_resource import get_generic_resource
@@ -20,16 +20,25 @@ METADATA = yaml.safe_load(Path("./charmcraft.yaml").read_text())
 APP_NAME = METADATA["name"]
 
 
-@pytest_asyncio.fixture()
-async def vsphere_overlay(ops_test: OpsTest) -> Path:
+def channel_swap(overlay_yaml, charm_match, channel):
+    charm_re = re.compile(charm_match)
+    for value in overlay_yaml["applications"].values():
+        if charm_re.match(value.get("charm", "")):
+            value["channel"] = channel
+
+
+@pytest.fixture()
+def vsphere_overlay(ops_test: OpsTest) -> Path:
     bundles_dst_dir = ops_test.tmp_path / "bundles"
     bundles_dst_dir.mkdir(exist_ok=True)
     overlay = bundles_dst_dir / "vsphere-overlay.yaml"
     url = "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/overlays/vsphere-overlay.yaml"
-    with overlay.open("wb") as fp:
+    with overlay.open("w") as fp:
         with urllib.request.urlopen(url) as f:
-            fp.write(f.read())
-    yield overlay
+            overlay_yaml = yaml.safe_load(f.read())
+        channel_swap(overlay_yaml, r"^vsphere", "edge")
+        fp.write(yaml.dump(overlay_yaml))
+    return overlay
 
 
 @pytest.mark.abort_on_fail
