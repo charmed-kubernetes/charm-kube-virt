@@ -2,6 +2,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 """Update to a new upstream release."""
+
 import argparse
 import contextlib
 import json
@@ -133,7 +134,9 @@ def gather_releases(source: str) -> Tuple[str, Set[Release]]:
                     Release(
                         item["name"],
                         [
-                            GH_RAW.format(rel=item["name"], manifest=manifest, **context)
+                            GH_RAW.format(
+                                rel=item["name"], manifest=manifest, **context
+                            )
                             for manifest in context["manifests"]
                         ],
                     )
@@ -182,7 +185,13 @@ def download(source: str, release: Release) -> Release:
     paths = []
     for idx, manifest in enumerate(release.paths):
         prefix = f"{idx:03}-" if SOURCES[source]["enumerate_manifest"] else ""
-        dest = FILEDIR / source / "manifests" / release.name / (prefix + Path(manifest).name)
+        dest = (
+            FILEDIR
+            / source
+            / "manifests"
+            / release.name
+            / (prefix + Path(manifest).name)
+        )
         dest.parent.mkdir(exist_ok=True)
         urllib.request.urlretrieve(manifest, dest)
         paths.append(dest)
@@ -195,7 +204,9 @@ def dedupe(this: Release, next: Release) -> Release:
     returns this release if this==next by content
     returns next release if this!=next by content
     """
-    files_this, files_next = (set(path.name for path in rel.paths) for rel in (this, next))
+    files_this, files_next = (
+        set(path.name for path in rel.paths) for rel in (this, next)
+    )
     if files_this != files_next:
         # Found a different set of files
         return next
@@ -203,7 +214,10 @@ def dedupe(this: Release, next: Release) -> Release:
     for file_next in next.paths:
         for file_this in this.paths:
             if all(
-                (file_this.name == file_next.name, file_this.read_text() != file_next.read_text())
+                (
+                    file_this.name == file_next.name,
+                    file_this.read_text() != file_next.read_text(),
+                )
             ):
                 # Found different in at least one file
                 return next
@@ -272,10 +286,7 @@ def get_argparser():
         default=list(SOURCES.keys()),
         choices=SOURCES.keys(),
         type=str,
-        help="Which manifest sources to be updated.\n\n"
-        "example\n"
-        "  --source storage_provider\n"
-        "\n",
+        help="Which manifest sources to be updated.\n\nexample\n  --source storage_provider\n\n",
     )
     return parser
 

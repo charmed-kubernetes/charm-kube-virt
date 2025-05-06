@@ -24,6 +24,10 @@ jobs:
     name: Integration test with VMWare
     runs-on: self-hosted
     timeout-minutes: 360
+    strategy:
+      max-parallel: 1
+      matrix:
+        series: [jammy, noble]
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -33,7 +37,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Read charmcraft version file
+      - name: Read charmcraft channel file
         id: charmcraft
         run: echo "channel=$(cat .charmcraft-channel)" >> $GITHUB_OUTPUT
 
@@ -53,7 +57,7 @@ jobs:
             --model-default force-vm-hardware-version=17
 
       - name: Run test
-        run: tox -e integration -- --basetemp=/home/ubuntu/pytest
+        run: tox -e integration -- --series=${{matrix.series}} --basetemp=/home/ubuntu/pytest
 
       - name: Setup Debug Artifact Collection
         if: ${{ failure() }}

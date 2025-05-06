@@ -39,7 +39,9 @@ def test_update_status_with_conditions(harness_installed):
     mock_installed[0].resource.kind = "KubeVirt"
     mock_installed[0].resource.metadata.namespace = "kubevirt"
     mock_installed[0].resource.metadata.name = "kubevirt"
-    mock_installed[0].resource.status.conditions = [mock.MagicMock(type="Tested", status="False")]
+    mock_installed[0].resource.status.conditions = [
+        mock.MagicMock(type="Tested", status="False")
+    ]
 
     with mock.patch(
         "ops.manifests.manifest.Manifests.installed_resources",
@@ -47,5 +49,6 @@ def test_update_status_with_conditions(harness_installed):
         mocker.return_value = mock_installed
         assert harness_installed.charm._update_status({}) is None
     assert (
-        harness_installed.charm.unit.status.message == "KubeVirt/kubevirt/kubevirt is not Tested"
+        harness_installed.charm.unit.status.message
+        == "KubeVirt/kubevirt/kubevirt is not Tested"
     )

@@ -78,9 +78,13 @@ class CharmKubeVirtCharm(CharmBase):
             has_kvm=False,  # True if this unit has /dev/kvm
         )
         self.collector = Collector(self.kube_operator)
-        self.framework.observe(self.on.kube_control_relation_created, self._kube_control)
+        self.framework.observe(
+            self.on.kube_control_relation_created, self._kube_control
+        )
         self.framework.observe(self.on.kube_control_relation_joined, self._kube_control)
-        self.framework.observe(self.on.kube_control_relation_changed, self._kube_control)
+        self.framework.observe(
+            self.on.kube_control_relation_changed, self._kube_control
+        )
         self.framework.observe(self.on.kube_control_relation_broken, self._merge_config)
 
         self.framework.observe(self.on.kubevirts_relation_created, self._kube_virt)
@@ -162,7 +166,9 @@ class CharmKubeVirtCharm(CharmBase):
             self.unit.status = WaitingStatus(", ".join(unready))
             return
 
-        phases = ", ".join(f"{obj}: {phase}" for obj, phase in self.kube_operator.phases)
+        phases = ", ".join(
+            f"{obj}: {phase}" for obj, phase in self.kube_operator.phases
+        )
 
         status_type = WaitingStatus if "Deployed" not in phases else ActiveStatus
         self.unit.status = status_type(phases)
@@ -199,7 +205,9 @@ class CharmKubeVirtCharm(CharmBase):
                 self.unit.status = BlockedStatus(evaluation)
             return False
         if not self.kube_control.get_auth_credentials(self.unit.name):
-            self.unit.status = WaitingStatus("Waiting for kube-control: unit credentials")
+            self.unit.status = WaitingStatus(
+                "Waiting for kube-control: unit credentials"
+            )
             return False
         if not (Path.home() / ".kube/config").exists():
             logger.info("Expected kubeconfig not found on filesystem")
@@ -284,13 +292,15 @@ class CharmKubeVirtCharm(CharmBase):
         try:
             subprocess.check_call(["systemctl", "reload", "apparmor.service"])
         except subprocess.CalledProcessError:
-            return self._ops_blocked_by("Could not reload apparmor service", exc_info=True)
+            return self._ops_blocked_by(
+                "Could not reload apparmor service", exc_info=True
+            )
         return None
 
     def _install_binaries(self, event) -> Optional[str]:
         self.unit.status = MaintenanceStatus("Installing Binaries")
         self.stored.has_kvm = self.kube_virt.dev_kvm_exists
-        packages = ["qemu"]
+        packages = ["qemu-system"]
 
         if self.stored.has_kvm:
             packages += [
@@ -356,7 +366,9 @@ class CharmKubeVirtCharm(CharmBase):
                 try:
                     controller.delete_manifests(ignore_unauthorized=True)
                 except ManifestClientError:
-                    self._ops_wait_for(event, "Waiting for kube-apiserver", exc_info=True)
+                    self._ops_wait_for(
+                        event, "Waiting for kube-apiserver", exc_info=True
+                    )
                     event.defer()
                     return
 

@@ -2,6 +2,149 @@
 # See https://juju.is/docs/sdk/charmcraft-config for guidance.
 
 type: charm
+# Copyright 2023 Canonical, Ltd.
+# See LICENSE file for licensing details.
+name: kubevirt
+summary: Deploys KubeVirt into a Charmed-Kubernetes cluster
+description: |-
+  This charm allows for installation of a selectable version of
+  kubevirt into a cluster. KubeVirt allows for virtual machine
+  instances to be launched as kubernetes workloads which
+  interact with other internal services within a kubernetes cluster.
+links:
+  issues:
+  - https://bugs.launchpad.net/charm-kubevirt
+  source:
+  - https://github.com/charmed-kubernetes/charm-kube-virt
+  website:
+  - https://kubevirt.io/
+
+subordinate: true
+
+peers:
+  kubevirts:
+    interface: kubevirts
+
+requires:
+  juju-info:
+    interface: juju-info
+    scope: container
+  kube-control:
+    interface: kube-control
+    limit: 1
+
+config:
+  options:
+    image-registry:
+      type: string
+      default: quay.io
+      description: |
+        Source registry of metrics server images.
+
+        By setting to a value, each image listed in the releases manifest
+        has its image-registry replaced.
+
+        If unset, the manifests will use the image registry from the kube-control relation
+
+        example)
+          juju config kube-virt image-registry='quay.io'
+
+          juju config kube-virt --reset image-registry
+
+    software-emulation:
+      type: boolean
+      description: |
+        Whether to allow software-emulation of VMs
+        true: allows such behavior
+        false: disallows such behavior
+        unset: automatically determined by the group of units
+
+        example)
+          juju config kube-virt software-emulation=true
+
+          juju config kube-virt software-emulation=false
+
+          juju config kube-virt --reset software-emulation
+
+    pvc-tolerate-less-space-up-to-percent:
+      type: int
+      description: |
+        Filesystem PVCs:
+          Since not every storage provisioner provides volumes
+          with the exact usable amount of space as requested
+          (e.g. due to filesystem overhead), KubeVirt tolerates
+          up to 10% less available space.
+
+      default: 10
+
+    operator-release:
+      type: string
+      description: |
+        Specify the version of kubevirt as defined by the release
+        tags of https://github.com/kubevirt/kubevirt/releases/tags
+
+        example)
+          juju config kube-virt operator-release='v0.58.0'
+
+        A list of supported versions is available through the action:
+          juju run-action kube-virt/leader list-releases --wait
+
+        To reset by to the latest supported by the charm use:
+          juju config kube-virt --reset operator-release
+
+        The current release deployed is available by viewing
+          juju status kube-virt
+
+actions:
+  list-versions:
+    description: List Operator Versions supported by this charm
+  list-resources:
+    description: List Operator Resources in configured version
+    params:
+      manifest:
+        type: string
+        default: ""
+        description: |
+          Filter list based on "kubevirt" or "kubevirt-custom-resource" manifests.
+      resources:
+        type: string
+        default: ""
+        description: |
+          Space separated list of kubernetes resource types to filter list result
+  scrub-resources:
+    description: |
+      Remove kubernetes resources created by this charm which should no
+      longer be in the cluster.
+    params:
+      manifest:
+        type: string
+        default: ""
+        description: |
+          Filter list based on "kubevirt" or "kubevirt-custom-resource" manifests.
+      resources:
+        type: string
+        default: ""
+        description: |
+          Space separated list of kubernetes resource types to filter scrubbing
+  sync-resources:
+    description: |
+      Add kubernetes resources which should be created by this charm which aren't
+      present within the cluster.
+    params:
+      manifest:
+        type: string
+        default: ""
+        description: |
+          Filter list based on "kubevirt" or "kubevirt-custom-resource" manifests.
+      resources:
+        type: string
+        default: ""
+        description: |
+          Space separated list of kubernetes resource types
+          to use a filter during the sync. This helps limit
+          which missing resources are applied.
+
+
 bases:
   - build-on:
     - name: ubuntu
