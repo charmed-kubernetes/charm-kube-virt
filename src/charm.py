@@ -300,7 +300,7 @@ class CharmKubeVirtCharm(CharmBase):
     def _install_binaries(self, event) -> Optional[str]:
         self.unit.status = MaintenanceStatus("Installing Binaries")
         self.stored.has_kvm = self.kube_virt.dev_kvm_exists
-        packages = ["qemu"]
+        packages = ["qemu-system"]
 
         if self.stored.has_kvm:
             packages += [
