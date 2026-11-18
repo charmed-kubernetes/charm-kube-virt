@@ -95,6 +95,11 @@ config:
         The current release deployed is available by viewing
           juju status kube-virt
 
+        KubeVirt only supports updating from the latest patch of one minor
+        release to the latest patch of the next minor release. The charm
+        blocks on a release which skips a step and names the release to
+        apply first.
+
 actions:
   list-versions:
     description: List Operator Versions supported by this charm

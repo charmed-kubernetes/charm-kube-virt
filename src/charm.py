@@ -144,6 +144,15 @@ class CharmKubeVirtCharm(CharmBase):
         if not self.stored.deployed or not self.stored.installed:
             return
 
+        try:
+            upgrade_error = self.kube_operator.upgrade_path_error()
+        except ManifestClientError:
+            logger.exception("Cannot verify the KubeVirt upgrade path")
+            upgrade_error = None
+        if upgrade_error:
+            self.unit.status = BlockedStatus(upgrade_error)
+            return
+
         def unready_conditions(cond_pair):
             (_, rsc), cond = cond_pair
             if rsc.kind == "Kubevirt" and cond.status == "False":
@@ -344,6 +353,14 @@ class CharmKubeVirtCharm(CharmBase):
             logger.info("Skipping until the config is evaluated.")
             return True
         if self.unit.is_leader():
+            try:
+                upgrade_error = self.kube_operator.upgrade_path_error()
+            except ManifestClientError:
+                self._ops_wait_for(event, "Waiting for kube-apiserver", exc_info=True)
+                return False
+            if upgrade_error:
+                self._ops_blocked_by(upgrade_error)
+                return False
             self.unit.status = MaintenanceStatus("Deploying KubeVirt Operator")
             self.unit.set_workload_version("")
             for controller in self.collector.manifests.values():
