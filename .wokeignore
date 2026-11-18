@@ -1,2 +1,4 @@
 # ignore charm libraries
 lib/charms
+# ignore unmodified upstream release manifests
+upstream/**/*.yaml
