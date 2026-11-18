@@ -27,6 +27,11 @@ As an optional addon to charmed-kubernetes, this charm allows for installation o
   * the charm will enable software-emulation for virtualization if `/dev/kvm` is not detected
     on any one worker node.
 
+* Since KubeVirt `v1.3` the `virt-api` and `virt-controller` deployments, and since `v1.7` the
+  `virt-operator` deployment, only schedule onto nodes labelled `node-role.kubernetes.io/control-plane`.
+  The `kubernetes-control-plane` charm registers its units with that label by default; keep it in
+  its `labels` config option.
+
 
 ## Contributing
 
@@ -41,7 +46,7 @@ for developer guidance.
 Deploying the charm into an existing juju machine model with `charmed-kubernetes` is as simple as 
 
 ```bash
-juju deploy kubevirt --channel <channel> --config operator-release='<v0.min.bug>' --trust
+juju deploy kubevirt --channel <channel> --config operator-release='<vX.Y.Z>' --trust
 ```
 
 Next, the charm will need to be related to every `kubernetes-worker` in the model. If you have multiple
@@ -79,6 +84,27 @@ Within this repository, we will be testing with a VMWare cluster which can provi
 the `vsphere-cloud-provider` charm.  This charm can allocate block storage in the VMWare cluster,
 mount the block storage into the VM, and use it for persistent storage through a PVC. The very 
 same methodology may be used within other clouds with storage classes and PVCs.
+
+## Upgrading
+
+KubeVirt [only supports updating](https://kubevirt.io/user-guide/cluster_admin/updating_and_deletion/)
+from the latest patch release of one minor version to the latest patch release of the next
+minor version. The charm refuses to apply a release which skips a step of that path and
+reports the next release to apply in its `Blocked` status, for example after upgrading the
+charm from a revision whose default was `v0.58.0`:
+
+```bash
+juju config kubevirt operator-release='v0.58.2'
+# wait until the cluster reports the new release as deployed, i.e. until
+#   kubectl get kubevirt -n kubevirt kubevirt -o jsonpath='{.status.observedKubeVirtVersion}'
+# prints v0.58.2, then continue with the release named by the charm status
+juju config kubevirt operator-release='v0.59.2'
+...
+# once the cluster runs the release before the default, return to the default
+juju config kubevirt --reset operator-release
+```
+
+`juju run kubevirt/leader list-versions` lists the releases bundled with the charm.
 
 
 ## Usage

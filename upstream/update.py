@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from itertools import accumulate
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Generator, List, Optional, Set, Tuple, TypedDict
+from typing import Dict, Generator, List, Optional, Set, Tuple, TypedDict
 
 import yaml
 from semver import VersionInfo
@@ -122,40 +122,49 @@ def main(source: str, registry: Optional[Registry]):
     return unique_releases[-1].name, all_images
 
 
-def gather_releases(source: str) -> Tuple[str, Set[Release]]:
-    """Fetch from github the release manifests by version."""
+def gather_tags(context: dict) -> List[dict]:
+    """Fetch every tag of the repository, following the API pagination."""
+    tags: List[dict] = []
+    page = 1
+    while True:
+        url = f"{GH_TAGS.format(**context)}?per_page=100&page={page}"
+        with urllib.request.urlopen(url) as resp:
+            batch = json.load(resp)
+        if not batch:
+            return tags
+        tags.extend(batch)
+        page += 1
+
+
+def gather_releases(source: str) -> Set[Release]:
+    """Fetch from github the latest patch release manifests of each minor version."""
     context = dict(**SOURCES[source])
     version_parser = context["version_parser"]
+    latest: Dict[Tuple[int, int], Release] = {}
     if context.get("release_tags"):
-        with urllib.request.urlopen(GH_TAGS.format(**context)) as resp:
-            possible = json.load(resp)
-            releases = sorted(
+        for item in gather_tags(context):
+            name = item["name"]
+            if not VERSION_RE.match(name):
+                continue
+            version = version_parser(name[1:])
+            if version.prerelease or not (
+                version_parser(context["minimum"][1:])
+                <= version
+                < version_parser(context["maximum"][1:])
+            ):
+                continue
+            minor = (version.major, version.minor)
+            if minor in latest and version_parser(latest[minor].name[1:]) > version:
+                continue
+            latest[minor] = Release(
+                name,
                 [
-                    Release(
-                        item["name"],
-                        [
-                            GH_RAW.format(
-                                rel=item["name"], manifest=manifest, **context
-                            )
-                            for manifest in context["manifests"]
-                        ],
-                    )
-                    for item in possible
-                    if (
-                        VERSION_RE.match(item["name"])
-                        and not version_parser(item["name"][1:]).prerelease
-                        and (
-                            version_parser(context["minimum"][1:])
-                            <= version_parser(item["name"][1:])
-                            < version_parser(context["maximum"][1:])
-                        )
-                    )
+                    GH_RAW.format(rel=name, manifest=manifest, **context)
+                    for manifest in context["manifests"]
                 ],
-                key=lambda r: version_parser(r.name[1:]),
-                reverse=True,
             )
 
-    return set(releases)
+    return set(latest.values())
 
 
 def gather_current(source: str) -> Set[Release]:

@@ -79,6 +79,7 @@ config:
 
     operator-release:
       type: string
+      default: v1.9.1
       description: |
         Specify the version of kubevirt as defined by the release
         tags of https://github.com/kubevirt/kubevirt/releases/tags
@@ -89,11 +90,16 @@ config:
         A list of supported versions is available through the action:
           juju run-action kube-virt/leader list-releases --wait
 
-        To reset by to the latest supported by the charm use:
+        To reset to the default release of the charm use:
           juju config kube-virt --reset operator-release
 
         The current release deployed is available by viewing
           juju status kube-virt
+
+        KubeVirt only supports updating from the latest patch of one minor
+        release to the latest patch of the next minor release. The charm
+        blocks on a release which skips a step and names the release to
+        apply first.
 
 actions:
   list-versions:

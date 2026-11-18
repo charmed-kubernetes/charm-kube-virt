@@ -4,12 +4,29 @@
 
 import logging
 import pickle
+import re
 from hashlib import md5
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
-from ops.manifests import ConfigRegistry, ManifestLabel, Manifests, Patch
+from httpx import HTTPError
+from lightkube import ApiError
+from lightkube.generic_resource import create_namespaced_resource
+from ops.manifests import (
+    ConfigRegistry,
+    ManifestClientError,
+    ManifestLabel,
+    Manifests,
+    Patch,
+)
 
 log = logging.getLogger(__file__)
+RELEASE_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+
+
+def _parse_release(release: Optional[str]) -> Optional[Tuple[int, ...]]:
+    """Parse a vX.Y.Z release tag into a comparable tuple."""
+    match = RELEASE_RE.match(release or "")
+    return tuple(map(int, match.groups())) if match else None
 
 
 class UpdateKubeVirt(Patch):
@@ -93,6 +110,51 @@ class KubeVirtOperator(Manifests):
             return f"pvc-tolerate-less-space-up-to-percent is not in range: 0 < {percent} < 100"
 
         return None
+
+    @property
+    def deployed_release(self) -> Optional[str]:
+        """KubeVirt release fully rolled out in the cluster, None if not deployed."""
+        kubevirt_cls = create_namespaced_resource(
+            "kubevirt.io", "v1", "KubeVirt", "kubevirts"
+        )
+        try:
+            kubevirt = self.client.get(
+                kubevirt_cls, UpdateKubeVirt.NAME, namespace="kubevirt"
+            )
+        except ApiError as e:
+            if e.status.code == 404:
+                return None
+            raise ManifestClientError("Failed to read the KubeVirt resource", e) from e
+        except HTTPError as e:
+            raise ManifestClientError("Failed to read the KubeVirt resource", e) from e
+        return (kubevirt.status or {}).get("observedKubeVirtVersion")
+
+    def upgrade_path_error(self) -> Optional[str]:
+        """Reject a release which skips a step of KubeVirt's supported upgrade path.
+
+        KubeVirt only supports updating from the latest patch of one minor release
+        to the latest patch of the next minor release, see
+        https://kubevirt.io/user-guide/cluster_admin/updating_and_deletion/
+        """
+        deployed, target = self.deployed_release, self.current_release
+        current, wanted = _parse_release(deployed), _parse_release(target)
+        if not (current and wanted) or wanted[:2] <= current[:2]:
+            return None
+        bundled = sorted(filter(None, map(_parse_release, self.releases)))
+        newer_patches = [r for r in bundled if r[:2] == current[:2] and r > current]
+        if newer_patches:
+            step = newer_patches[-1]
+        else:
+            next_minor = min(
+                (r[:2] for r in bundled if r[:2] > current[:2]), default=None
+            )
+            if next_minor is None or wanted[:2] == next_minor:
+                return None
+            step = max(r for r in bundled if r[:2] == next_minor)
+        return (
+            f"KubeVirt {deployed} cannot update directly to {target}; "
+            f"set operator-release=v{'.'.join(map(str, step))} first"
+        )
 
     @property
     def phases(self):
