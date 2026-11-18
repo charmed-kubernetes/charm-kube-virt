@@ -10,6 +10,7 @@ import ops.testing
 import pytest
 
 from charm import CharmKubeVirtCharm
+from kubevirt_manifests import _parse_release
 
 ops.testing.SIMULATE_CAN_CONNECT = True
 
@@ -123,3 +124,72 @@ def test_install_manifests_blocked_by_upgrade_path(harness):
         )
     apply.assert_not_called()
     assert harness.charm.unit.status == ops.model.BlockedStatus("skip")
+
+
+def _release(parsed):
+    return "v" + ".".join(map(str, parsed))
+
+
+def _refresh_deployed(harness, pick_deployed):
+    """Refresh a deployed leader from a revision without an operator-release default.
+
+    The stored config hash is the one computed while operator-release was unset;
+    the refreshed charm then runs upgrade-charm with the schema default.
+    """
+    harness.set_leader(True)
+    harness.begin()
+    operator = harness.charm.kube_operator
+    deployed = pick_deployed([_parse_release(r) for r in operator.releases])
+    harness.update_config({"operator-release": ""})
+    previous_hash = operator.hash()
+    harness.update_config(unset=["operator-release"])
+    harness.charm.stored.config_hash = previous_hash
+    assert operator.hash() != previous_hash
+    with (
+        mock.patch.object(
+            type(operator),
+            "deployed_release",
+            new_callable=mock.PropertyMock,
+            return_value=deployed,
+        ),
+        mock.patch.object(operator, "apply_manifests") as apply,
+        mock.patch.object(operator, "evaluate", return_value=None),
+        mock.patch.object(CharmKubeVirtCharm, "_check_kube_control", return_value=True),
+        mock.patch.object(CharmKubeVirtCharm, "_check_kube_virts", return_value=True),
+        mock.patch.object(CharmKubeVirtCharm, "_install_binaries", return_value=None),
+    ):
+        harness.charm.on.upgrade_charm.emit()
+    return apply
+
+
+def test_schema_default_matches_version_file(harness):
+    harness.begin()
+    operator = harness.charm.kube_operator
+    assert harness.charm.config["operator-release"] == operator.default_release
+    assert operator.default_release in operator.releases
+
+
+def test_refresh_rolls_out_default_release(harness):
+    def previous_minor(releases):
+        default = _parse_release(harness.charm.kube_operator.default_release)
+        return _release(max(r for r in releases if r[:2] < default[:2]))
+
+    apply = _refresh_deployed(harness, previous_minor)
+    operator = harness.charm.kube_operator
+    assert operator.current_release == operator.default_release
+    assert harness.charm.stored.config_hash == operator.hash()
+    apply.assert_called()
+
+
+def test_refresh_blocks_default_release_skipping_steps(harness):
+    deployed = "v0.58.0"  # default of the previous charm revisions
+    apply = _refresh_deployed(harness, lambda releases: deployed)
+    latest_patch = max(
+        r
+        for r in map(_parse_release, harness.charm.kube_operator.releases)
+        if r[:2] == _parse_release(deployed)[:2]
+    )
+    apply.assert_not_called()
+    status = harness.charm.unit.status
+    assert isinstance(status, ops.model.BlockedStatus)
+    assert status.message.endswith(f"operator-release={_release(latest_patch)} first")
