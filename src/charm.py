@@ -133,6 +133,10 @@ class CharmKubeVirtCharm(CharmBase):
         manifests = event.params.get("manifest", "")
         resources = event.params.get("resources", "")
         try:
+            # missing resources come from the configured release, which may skip a step
+            if upgrade_error := self.kube_operator.upgrade_path_error():
+                event.fail(upgrade_error)
+                return
             self.collector.apply_missing_resources(event, manifests, resources)
         except ManifestClientError:
             msg = "Failed to apply missing resources. API Server unavailable."

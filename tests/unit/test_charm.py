@@ -126,6 +126,49 @@ def test_install_manifests_blocked_by_upgrade_path(harness):
     assert harness.charm.unit.status == ops.model.BlockedStatus("skip")
 
 
+def _sync_with_missing_operator(harness, deployed):
+    """Run sync-resources while the virt-operator Deployment is missing."""
+    harness.set_leader(True)
+    harness.begin()
+    operator = harness.charm.kube_operator
+    expected = operator.resources
+    installed = frozenset(r for r in expected if r.kind != "Deployment")
+    assert installed != expected
+    with (
+        mock.patch.object(
+            type(operator),
+            "deployed_release",
+            new_callable=mock.PropertyMock,
+            return_value=deployed,
+        ),
+        mock.patch.object(operator, "labelled_resources", return_value=frozenset()),
+        mock.patch.object(operator, "installed_resources", return_value=installed),
+        mock.patch.object(operator, "conflicting_resources", return_value=frozenset()),
+        mock.patch.object(operator, "apply_resources") as apply,
+    ):
+        try:
+            output = harness.run_action("sync-resources")
+        except ops.testing.ActionFailed as e:
+            output = e
+    return output, apply
+
+
+def test_sync_resources_blocked_by_upgrade_path(harness):
+    output, apply = _sync_with_missing_operator(harness, "v0.58.0")
+    apply.assert_not_called()
+    assert isinstance(output, ops.testing.ActionFailed)
+    assert output.message.startswith("KubeVirt v0.58.0 cannot update directly to")
+    assert not harness.charm.stored.deployed
+
+
+def test_sync_resources_applies_missing_on_supported_path(harness):
+    output, apply = _sync_with_missing_operator(harness, None)
+    assert not isinstance(output, ops.testing.ActionFailed)
+    (missing,) = apply.call_args.args
+    assert missing.kind == "Deployment"
+    assert harness.charm.stored.deployed
+
+
 def _release(parsed):
     return "v" + ".".join(map(str, parsed))
 
